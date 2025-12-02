@@ -11,7 +11,7 @@ interface ActionPanelProps {
 
 type GameState = 'IDLE' | 'EXPLORING' | 'COMBAT' | 'VICTORY';
 type TabState = 'DUNGEON' | 'STORY' | 'SHOP';
-type CombatAnimState = 'IDLE' | 'ATTACK' | 'HIT' | 'SKILL';
+type CombatAnimState = 'IDLE' | 'ATTACK' | 'HIT' | 'SKILL' | 'EXTRACTION';
 
 // --- Local Data Generation Logic (Replaces GeminiService) ---
 
@@ -35,13 +35,15 @@ const ENEMIES_BY_RANK: Record<Rank, Enemy[]> = {
     [Rank.C]: [
         { name: "리자드맨", rank: Rank.C, hp: 400, maxHp: 400, attack: 45, description: "비늘로 덮인 인간형 몬스터입니다.", isBoss: false },
         { name: "자이언트 스파이더", rank: Rank.C, hp: 350, maxHp: 350, attack: 50, description: "거대한 독거미입니다.", isBoss: false },
-        { name: "고블린 마법사", rank: Rank.C, hp: 250, maxHp: 250, attack: 70, description: "화염구를 던지는 고블린입니다.", isBoss: false }
+        { name: "고블린 마법사", rank: Rank.C, hp: 250, maxHp: 250, attack: 70, description: "화염구를 던지는 고블린입니다.", isBoss: false },
+        { name: "다크 엘프 궁수", rank: Rank.C, hp: 300, maxHp: 300, attack: 65, description: "정확한 사격을 가하는 엘프입니다.", isBoss: false }
     ],
     [Rank.B]: [
         { name: "아이언 골렘", rank: Rank.B, hp: 1000, maxHp: 1000, attack: 70, description: "강철로 만들어진 골렘입니다.", isBoss: false },
         { name: "설인", rank: Rank.B, hp: 900, maxHp: 900, attack: 80, description: "혹한의 추위를 견디는 몬스터입니다.", isBoss: false },
         { name: "화염 도마뱀", rank: Rank.B, hp: 800, maxHp: 800, attack: 90, description: "몸에서 불길이 솟아오릅니다.", isBoss: false },
-        { name: "오크 주술사", rank: Rank.B, hp: 600, maxHp: 600, attack: 120, description: "저주를 거는 오크입니다.", isBoss: false }
+        { name: "오크 주술사", rank: Rank.B, hp: 600, maxHp: 600, attack: 120, description: "저주를 거는 오크입니다.", isBoss: false },
+        { name: "타락한 사제", rank: Rank.B, hp: 700, maxHp: 700, attack: 60, description: "어둠의 힘으로 회복합니다.", isBoss: false }
     ],
     [Rank.A]: [
         { name: "하이 오크 전사", rank: Rank.A, hp: 2000, maxHp: 2000, attack: 120, description: "붉은 피부의 고위 오크입니다.", isBoss: false },
@@ -224,13 +226,14 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
 
   const triggerAnimation = (type: CombatAnimState) => {
       setCombatAnim(type);
-      setTimeout(() => setCombatAnim('IDLE'), 500);
+      setTimeout(() => setCombatAnim('IDLE'), 1500); // Increased for EXTRACTION
   };
 
   const handleAttack = () => {
     if (!currentEnemy) return;
     
-    triggerAnimation('ATTACK');
+    setCombatAnim('ATTACK');
+    setTimeout(() => setCombatAnim('IDLE'), 200);
 
     const { damage, isCrit } = calculatePlayerDamage(1);
     
@@ -261,7 +264,9 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
           return;
       }
 
-      triggerAnimation('SKILL');
+      setCombatAnim('SKILL');
+      setTimeout(() => setCombatAnim('IDLE'), 500);
+
       updatePlayer({ mp: player.mp - skill.mpCost });
 
       if (skill.effect === 'heal') {
@@ -308,7 +313,8 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
           return;
       }
 
-      triggerAnimation('HIT');
+      setCombatAnim('HIT');
+      setTimeout(() => setCombatAnim('IDLE'), 500);
 
       const rawDmg = currentEnemy.attack;
       const finalDmg = Math.max(1, Math.floor(rawDmg - defense));
@@ -368,12 +374,15 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
       updatePlayer({ mp: player.mp - skill.mpCost });
       addLog("그림자 추출을 시도합니다...", 'system');
       addLog(`"일어나라..."`, 'system');
+      
+      setCombatAnim('EXTRACTION');
 
       // Chance calculation based on Int
       const successChance = 40 + (player.stats.intelligence * 0.5);
       const roll = Math.random() * 100;
       
       setTimeout(() => {
+          setCombatAnim('IDLE');
           if (roll < successChance) {
               const enemyName = lastDefeatedEnemy.name;
               
@@ -402,10 +411,14 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                   shadowName = enemyName.replace(/기사/, '').trim() + " (나이트)";
                   role = "전사";
                   bonusMult = 1.0;
-              } else if (/궁수|아처|레인저/.test(enemyName)) {
-                  shadowName = enemyName + " (레인저)";
+              } else if (/궁수|아처|레인저|사수/.test(enemyName)) {
+                  shadowName = enemyName.replace(/궁수|아처|사수/, '').trim() + " (레인저)";
                   role = "궁수";
-                  bonusMult = 1.1;
+                  bonusMult = 1.2;
+              } else if (/사제|프리스트|힐러/.test(enemyName)) {
+                  shadowName = enemyName.replace(/사제|프리스트|힐러/, '').trim() + " (매지션)";
+                  role = "힐러";
+                  bonusMult = 0.6;
               }
 
               const newCompanion: Companion = {
@@ -424,7 +437,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
           } else {
                addLog("추출에 실패했습니다. 영혼이 소멸되었습니다.", 'info');
           }
-      }, 1500);
+      }, 2000);
   };
 
   const handleEndVictory = () => {
@@ -543,6 +556,15 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
                   <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
                       <div className="w-full h-full bg-blue-500/20 mix-blend-screen animate-pulse"></div>
                       <div className="absolute w-40 h-40 bg-blue-400 rounded-full blur-3xl opacity-50 animate-ping"></div>
+                  </div>
+              )}
+              {combatAnim === 'EXTRACTION' && (
+                  <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+                      <div className="absolute inset-0 bg-purple-900/60 mix-blend-multiply animate-pulse"></div>
+                      <div className="flex flex-col items-center animate-bounce">
+                          <span className="text-6xl filter drop-shadow-[0_0_20px_#a855f7]">👻</span>
+                          <span className="text-purple-300 font-bold text-2xl mt-4 drop-shadow-[0_0_10px_#a855f7]">ARISE...</span>
+                      </div>
                   </div>
               )}
 

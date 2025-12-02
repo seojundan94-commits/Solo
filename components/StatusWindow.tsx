@@ -1,5 +1,5 @@
 import React from 'react';
-import { Player, Stats, Skill, Item, EquipmentSlot } from '../types';
+import { Player, Stats, Skill, Item, EquipmentSlot, Rank } from '../types';
 
 interface StatusWindowProps {
   player: Player;
@@ -8,6 +8,14 @@ interface StatusWindowProps {
   onToggleEquip?: (item: Item) => void;
   onOpenCodeModal?: () => void;
 }
+
+const getRankColor = (rank: string) => {
+  if (rank === 'S') return 'text-yellow-400 border-yellow-500/50';
+  if (rank === 'A') return 'text-red-400 border-red-500/50';
+  if (rank === 'B') return 'text-purple-400 border-purple-500/50';
+  if (rank === 'C') return 'text-blue-400 border-blue-500/50';
+  return 'text-gray-400 border-gray-500/50';
+};
 
 export const StatusWindow: React.FC<StatusWindowProps> = ({ player, onIncreaseStat, onOpenUpgradeModal, onToggleEquip, onOpenCodeModal }) => {
   
@@ -35,8 +43,11 @@ export const StatusWindow: React.FC<StatusWindowProps> = ({ player, onIncreaseSt
             <div className="flex justify-between items-center mb-4 border-b border-system-blue/50 pb-2">
                 <h2 className="text-2xl font-bold text-system-blue tracking-widest">STATUS</h2>
                 {onOpenCodeModal && (
-                    <button onClick={onOpenCodeModal} className="text-[10px] bg-gray-900 hover:bg-system-blue text-gray-500 hover:text-black border border-gray-700 hover:border-system-blue px-3 py-1 rounded transition-colors font-bold tracking-wider">
-                        ENTER CODE
+                    <button 
+                        onClick={onOpenCodeModal} 
+                        className="text-[10px] bg-system-blue/20 hover:bg-system-blue text-system-blue hover:text-black border border-system-blue px-3 py-1 rounded transition-all font-bold tracking-wider hover:shadow-[0_0_10px_#00a8ff]"
+                    >
+                        ADMIN CODE
                     </button>
                 )}
             </div>
@@ -140,126 +151,4 @@ export const StatusWindow: React.FC<StatusWindowProps> = ({ player, onIncreaseSt
         </div>
 
         {/* Equipped Section */}
-        <div className="relative z-10 border-t border-gray-800 pt-4">
-             <h3 className="text-sm font-bold text-gray-400 mb-2">EQUIPMENT</h3>
-             <div className="grid grid-cols-2 gap-2 text-xs">
-                 <div className="bg-gray-900/40 p-2 rounded border border-gray-700">
-                     <span className="text-gray-500 block mb-1">무기</span>
-                     <span className={getEquippedItem('WEAPON') ? "text-white" : "text-gray-600"}>
-                         {getEquippedItem('WEAPON')?.name || "비어있음"}
-                     </span>
-                 </div>
-                 <div className="bg-gray-900/40 p-2 rounded border border-gray-700">
-                     <span className="text-gray-500 block mb-1">투구</span>
-                     <span className={getEquippedItem('HEAD') ? "text-white" : "text-gray-600"}>
-                         {getEquippedItem('HEAD')?.name || "비어있음"}
-                     </span>
-                 </div>
-                 <div className="bg-gray-900/40 p-2 rounded border border-gray-700">
-                     <span className="text-gray-500 block mb-1">갑옷</span>
-                     <span className={getEquippedItem('BODY') ? "text-white" : "text-gray-600"}>
-                         {getEquippedItem('BODY')?.name || "비어있음"}
-                     </span>
-                 </div>
-                 <div className="bg-gray-900/40 p-2 rounded border border-gray-700">
-                     <span className="text-gray-500 block mb-1">장신구</span>
-                     <span className={getEquippedItem('ACCESSORY') ? "text-white" : "text-gray-600"}>
-                         {getEquippedItem('ACCESSORY')?.name || "비어있음"}
-                     </span>
-                 </div>
-             </div>
-        </div>
-
-        {/* Inventory Section */}
-        <div className="relative z-10 border-t border-gray-800 pt-4">
-            <h3 className="text-sm font-bold text-gray-400 mb-2">INVENTORY</h3>
-            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto custom-scrollbar">
-                {player.inventory.length === 0 ? (
-                     <p className="text-xs text-gray-600 italic">소지품이 없습니다.</p>
-                ) : (
-                    player.inventory.map((item, idx) => (
-                        <div key={idx} className={`text-xs p-2 rounded border bg-gray-900/50 flex items-center justify-between
-                            ${item.isEquipped ? 'border-green-500/50 bg-green-900/20' : 'border-gray-700'}
-                        `}>
-                            <div className="flex items-center gap-2">
-                                {item.isEquipped && <span className="text-green-500 font-bold">[E]</span>}
-                                <span className={item.isEquipped ? "text-green-100" : "text-gray-300"}>{item.name}</span>
-                                {item.type === 'CONSUMABLE' && <span className="text-gray-500">x{item.count}</span>}
-                            </div>
-                            
-                            {/* Equip/Unequip Button */}
-                            {item.type !== 'CONSUMABLE' && onToggleEquip && (
-                                <button 
-                                    onClick={() => onToggleEquip(item)}
-                                    className={`px-2 py-0.5 rounded text-[10px] border transition-colors
-                                        ${item.isEquipped 
-                                            ? 'border-red-500 text-red-400 hover:bg-red-900/30' 
-                                            : 'border-blue-500 text-blue-400 hover:bg-blue-900/30'}
-                                    `}
-                                >
-                                    {item.isEquipped ? '해제' : '장착'}
-                                </button>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
-        </div>
-
-        {/* Skills Section */}
-        <div className="relative z-10 border-t border-gray-800 pt-4">
-            <h3 className="text-sm font-bold text-gray-400 mb-2">SKILLS</h3>
-            <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
-                {player.skills.length === 0 ? (
-                     <p className="text-xs text-gray-600 italic">습득한 스킬이 없습니다.</p>
-                ) : (
-                    player.skills.map(skill => (
-                        <div key={skill.id} className="flex justify-between items-center bg-gray-900/50 p-2 rounded border border-gray-800 group/skill">
-                            <div>
-                                <div className="text-xs font-bold text-white flex items-center gap-2">
-                                    {skill.name} <span className="text-[10px] text-yellow-500 border border-yellow-500/30 px-1 rounded">Lv.{skill.level}</span>
-                                </div>
-                                <div className="text-[10px] text-gray-500">{skill.description}</div>
-                            </div>
-                            <div className="flex flex-col items-end gap-1">
-                                <div className="text-xs font-mono text-blue-400">{skill.mpCost > 0 ? `${skill.mpCost} MP` : 'Passive'}</div>
-                                {onOpenUpgradeModal && (
-                                    <button 
-                                        onClick={() => onOpenUpgradeModal(skill)}
-                                        className="text-[10px] bg-gray-800 hover:bg-yellow-900 text-gray-400 hover:text-yellow-400 px-1.5 py-0.5 rounded border border-gray-700 transition-colors"
-                                    >
-                                        ▲ 강화
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-        </div>
-
-        {/* Army/Companions Section */}
-        <div className="relative z-10 border-t border-gray-800 pt-4">
-            <h3 className="text-sm font-bold text-gray-400 mb-2">SHADOW ARMY & PARTNERS</h3>
-            <div className="flex flex-wrap gap-2">
-                 {player.companions.length === 0 ? (
-                     <p className="text-xs text-gray-600 italic">소환된 그림자가 없습니다.</p>
-                ) : (
-                    player.companions.map(comp => (
-                        <div key={comp.id} className={`text-xs px-2 py-1 rounded border flex flex-col gap-1 min-w-[100px] ${comp.type === 'SHADOW' ? 'bg-purple-900/20 border-purple-500 text-purple-300' : 'bg-blue-900/20 border-blue-500 text-blue-300'}`}>
-                            <div className="flex justify-between items-center">
-                                <span className="font-bold">{comp.name}</span>
-                                <span className="opacity-70 text-[10px]">{comp.rank}급</span>
-                            </div>
-                            <div className="flex justify-between items-center border-t border-white/10 pt-1 mt-0.5">
-                                <span className="text-[10px] opacity-80">{comp.role || "보병"}</span>
-                                {comp.attackBonus > 0 && <span className="text-[10px] text-red-400 font-bold">+ATK {comp.attackBonus}</span>}
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
-        </div>
-    </div>
-  );
-};
+        <div className="relative z-10 border-t border-gray-800 pt-
