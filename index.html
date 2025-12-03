@@ -286,7 +286,9 @@
                                     `}
                                     title={item.name + (item.count ? ` x${item.count}` : '')}
                                 >
-                                    <span className="text-xl">{item.type === 'WEAPON' ? '⚔️' : item.type === 'ARMOR' ? '🛡️' : '💊'}</span>
+                                    <span className="text-xl">
+                                        {item.type === 'WEAPON' ? '⚔️' : item.type === 'ARMOR' ? '🛡️' : item.id === 'gacha_ticket' ? '🎫' : '💊'}
+                                    </span>
                                     {item.count && item.count > 1 && (
                                         <span className="absolute bottom-0 right-0 bg-black/80 text-[10px] px-1 rounded-tl">{item.count}</span>
                                     )}
@@ -376,6 +378,7 @@
             { id: 'mp_potion_m', name: '중형 MP 포션', type: 'CONSUMABLE', description: '마력을 100 회복합니다.', price: 300, effectValue: 100, count: 1 },
             { id: 'mp_potion_l', name: '대형 MP 포션', type: 'CONSUMABLE', description: '마력을 300 회복합니다.', price: 800, effectValue: 300, count: 1 },
             { id: 'elixir', name: '엘릭서', type: 'CONSUMABLE', description: '체력과 마력을 완전히 회복합니다.', price: 5000, effectValue: 9999, count: 1 },
+            { id: 'gacha_ticket', name: '무료 뽑기권', type: 'CONSUMABLE', description: '랜덤 박스를 1회 무료로 엽니다.', price: 1000, effectValue: 0, count: 1 },
             { id: 'iron_sword', name: '강철 검', type: 'WEAPON', slot: 'WEAPON', description: '기본적인 검. (공격력 +5)', price: 1000, effectValue: 5 },
             { id: 'knight_dagger', name: '기사의 단검', type: 'WEAPON', slot: 'WEAPON', description: '예리한 단검. (공격력 +10)', price: 5000, effectValue: 10 },
             { id: 'steel_dagger', name: '정밀한 강철 단검', type: 'WEAPON', slot: 'WEAPON', description: '숙련자를 위한 단검. (공격력 +15)', price: 8000, effectValue: 15 },
@@ -396,7 +399,9 @@
             { id: 'ring_str', name: '힘의 반지', type: 'WEAPON', slot: 'ACCESSORY', description: '착용 시 힘이 솟습니다. (공격력 +10)', price: 20000, effectValue: 10 },
             { id: 'neck_def', name: '수호의 목걸이', type: 'ARMOR', slot: 'ACCESSORY', description: '착용 시 보호막 생성. (방어력 +15)', price: 20000, effectValue: 15 },
         ];
-        const SHOP_ITEMS = SHOP_ITEMS_RAW.sort((a, b) => a.price - b.price);
+        // Remove gacha_ticket from purchasable shop items to keep it exclusive, or keep it at high price? 
+        // Let's filter it out of the SHOP_ITEMS display array but keep in definitions.
+        const SHOP_ITEMS = SHOP_ITEMS_RAW.filter(i => i.id !== 'gacha_ticket').sort((a, b) => a.price - b.price);
 
         // ActionPanel Component
         const ActionPanel = ({ player, addLog, updatePlayer, onEnemyDefeated, onPlayerDamage }) => {
@@ -431,10 +436,7 @@
                 if (loading) return;
                 setLoading(true);
                 addLog(`${rank}급 게이트에 입장합니다... (총 5개 구역)`, 'info');
-                
-                // Set initial dungeon state for Wave 1
                 setDungeonProgress({ active: true, current: 1, total: 5, rank: rank, theme: theme });
-
                 const scenario = generateDungeonScenarioLocal(rank, theme);
                 addLog(scenario, 'system');
                 setTimeout(async () => {
@@ -452,13 +454,10 @@
                 const nextWave = dungeonProgress.current + 1;
                 setLoading(true);
                 setDungeonProgress(prev => ({ ...prev, current: nextWave }));
-                setGameState('EXPLORING'); // Brief transition
-                
+                setGameState('EXPLORING'); 
                 setTimeout(() => {
                     const enemy = generateEnemyLocal(dungeonProgress.rank);
-                    // Make last wave slightly harder or same
                     if (nextWave === 5) enemy.isBoss = true; 
-                    
                     setCurrentEnemy(enemy);
                     setGameState('COMBAT');
                     setLastDefeatedEnemy(null);
@@ -477,9 +476,7 @@
                 setLoading(true);
                 setActiveStoryId(storyId);
                 setExtractionAttempted(false);
-                // Reset dungeon progress since this is story
                 setDungeonProgress({ active: false, current: 0, total: 0, rank: null, theme: '' });
-                
                 addLog(`[메인 스토리] ${story.title} 시작...`, 'story');
                 addLog(`전설적인 몬스터, ${story.bossName}가 나타났습니다!`, 'system');
                 setTimeout(async () => {
@@ -655,15 +652,13 @@
                     addLog("장착 중인 아이템은 판매할 수 없습니다.", 'danger');
                     return;
                 }
-                const sellPrice = Math.floor(item.price * 0.5); // 50% refund
+                const sellPrice = Math.floor(item.price * 0.5); 
                 const newInventory = [...player.inventory];
-                
                 if (item.type === 'CONSUMABLE' && item.count > 1) {
                     newInventory[index].count -= 1;
                 } else {
                     newInventory.splice(index, 1);
                 }
-                
                 updatePlayer({ gold: player.gold + sellPrice, inventory: newInventory });
                 addLog(`${item.name}을(를) ${sellPrice}G에 판매했습니다.`, 'gain');
             };
@@ -698,10 +693,28 @@
 
             const handleGacha = () => {
                 const GACHA_COST = 400;
-                if (player.gold < GACHA_COST) { addLog("골드가 부족합니다.", 'danger'); return; }
                 
-                updatePlayer({ gold: player.gold - GACHA_COST });
-                addLog(`[랜덤 박스] 400골드를 사용하여 상자를 엽니다...`, 'system');
+                // Check for Free Ticket
+                const ticketIndex = player.inventory.findIndex(i => i.id === 'gacha_ticket');
+                const hasTicket = ticketIndex !== -1;
+                
+                if (!hasTicket && player.gold < GACHA_COST) { addLog("골드가 부족합니다.", 'danger'); return; }
+                
+                if (hasTicket) {
+                    // Use Ticket
+                    const newInventory = [...player.inventory];
+                    if (newInventory[ticketIndex].count > 1) {
+                        newInventory[ticketIndex].count -= 1;
+                    } else {
+                        newInventory.splice(ticketIndex, 1);
+                    }
+                    updatePlayer({ inventory: newInventory });
+                    addLog(`[랜덤 박스] 무료 뽑기권을 사용하여 상자를 엽니다...`, 'system');
+                } else {
+                    // Use Gold
+                    updatePlayer({ gold: player.gold - GACHA_COST });
+                    addLog(`[랜덤 박스] 400골드를 사용하여 상자를 엽니다...`, 'system');
+                }
                 
                 const roll = Math.random() * 100;
                 let resultType = 'FAIL';
@@ -716,7 +729,7 @@
                     if (resultType === 'FAIL') {
                         addLog("꽝! 상자 안에는 아무것도 없었습니다.", 'info');
                     } else if (resultType === 'GOLD') {
-                        setTimeout(() => updatePlayer({ gold: player.gold - GACHA_COST + 1000 }), 50); 
+                        setTimeout(() => updatePlayer({ gold: player.gold + 1000 }), 50); 
                         addLog("축하합니다! 1,000 골드를 획득했습니다.", 'gain');
                     } else if (resultType === 'ARMOR') {
                         const armor = { id: `gacha_armor_${Date.now()}`, name: '그림자 군주의 갑주', type: 'ARMOR', slot: 'BODY', description: '군주의 위엄이 서린 갑옷. (방어력 +80)', price: 0, effectValue: 80, uid: Date.now().toString(), isEquipped: false };
@@ -740,6 +753,21 @@
                         addLog("기적입니다! [그림자 타락한 악마]가 소환되었습니다!", 'gain');
                     }
                 }, 1000);
+            };
+
+            const handlePatrol = () => {
+                if (player.hp < 15) { addLog("체력이 부족하여 순찰할 수 없습니다.", 'danger'); return; }
+                updatePlayer({ 
+                    hp: player.hp - 10, 
+                    gold: player.gold + 50, 
+                    currentExp: player.currentExp + 15 
+                });
+                addLog(`순찰을 완료했습니다. (체력 -10, +50G, +15EXP)`, 'gain');
+            };
+
+            const getTicketCount = () => {
+                const ticket = player.inventory.find(i => i.id === 'gacha_ticket');
+                return ticket ? (ticket.count || 1) : 0;
             };
 
             if (gameState === 'COMBAT' && currentEnemy) {
@@ -828,6 +856,7 @@
                 <div className="flex-1 flex flex-col gap-4">
                     <div className="flex gap-2 bg-system-panel p-2 rounded border border-gray-800">
                         <button onClick={() => { if(player.hp < 10) return; updatePlayer({ hp: player.hp - 5, currentExp: player.currentExp + 10 }); addLog("훈련을 수행했습니다. (+10 EXP)", 'gain'); }} className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm">💪 훈련하기</button>
+                        <button onClick={handlePatrol} className="flex-1 py-2 bg-gray-800 hover:bg-blue-900/30 rounded text-sm border border-transparent hover:border-blue-500/30">🛡️ 순찰(상시 퀘스트)</button>
                         <button onClick={() => { updatePlayer({ hp: Math.min(player.maxHp, player.hp + player.maxHp*0.5), mp: Math.min(player.maxMp, player.mp + player.maxMp*0.5) }); addLog("휴식을 취했습니다.", 'gain'); }} className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm">💤 휴식하기</button>
                     </div>
 
@@ -887,17 +916,26 @@
                                 
                                 {shopMode === 'BUY' ? (
                                 <>
-                                    <div className="p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded border border-purple-500/50 flex flex-col items-center gap-3">
-                                        <h3 className="text-lg font-bold text-purple-400">🎁 랜덤 박스 (Lucky Draw)</h3>
-                                        <p className="text-xs text-gray-400 text-center">
+                                    <div className="p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded border border-purple-500/50 flex flex-col items-center gap-3 relative overflow-hidden">
+                                        <h3 className="text-lg font-bold text-purple-400 z-10">🎁 랜덤 박스 (Lucky Draw)</h3>
+                                        <p className="text-xs text-gray-400 text-center z-10">
                                             꽝 50% | 1000G 20% | 군주의 장비 29.5% | ??? 0.5%
                                         </p>
                                         <button 
                                             onClick={handleGacha}
-                                            className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded shadow-[0_0_15px_rgba(168,85,247,0.5)] transition-all"
+                                            className="z-10 px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded shadow-[0_0_15px_rgba(168,85,247,0.5)] transition-all flex flex-col items-center"
                                         >
-                                            400 Gold로 뽑기
+                                            {getTicketCount() > 0 ? (
+                                                <>
+                                                    <span>무료 뽑기권 사용</span>
+                                                    <span className="text-[10px] text-purple-200">남은 티켓: {getTicketCount()}장</span>
+                                                </>
+                                            ) : (
+                                                <span>400 Gold로 뽑기</span>
+                                            )}
                                         </button>
+                                        {/* Background Effect */}
+                                        <div className="absolute top-0 right-0 p-4 opacity-10 text-6xl">🎲</div>
                                     </div>
                                     
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
@@ -1105,7 +1143,38 @@
             const handleSubmitCode = () => {
                 setIsCodeModalOpen(false);
                 const code = codeInput.trim();
-                if (code === '1014') {
+                
+                if (code === 'hello') {
+                    // Elixir x20
+                    const elixirs = { id: 'elixir', name: '엘릭서', type: 'CONSUMABLE', description: '체력과 마력을 완전히 회복합니다.', price: 5000, effectValue: 9999, count: 20 };
+                    // Knight Killer x2
+                    const killers = [
+                        { id: 'knight_killer', name: '나이트 킬러', type: 'WEAPON', slot: 'WEAPON', description: '갑옷을 뚫는 단검. (공격력 +35)', price: 30000, effectValue: 35, uid: Date.now().toString(), isEquipped: false },
+                        { id: 'knight_killer', name: '나이트 킬러', type: 'WEAPON', slot: 'WEAPON', description: '갑옷을 뚫는 단검. (공격력 +35)', price: 30000, effectValue: 35, uid: (Date.now()+1).toString(), isEquipped: false }
+                    ];
+                    // Free Gacha Ticket x20
+                    const tickets = { id: 'gacha_ticket', name: '무료 뽑기권', type: 'CONSUMABLE', description: '랜덤 박스를 1회 무료로 엽니다.', price: 1000, effectValue: 0, count: 20 };
+                    
+                    setPlayer(prev => {
+                        const newInventory = [...prev.inventory];
+                        // Add Elixirs
+                        const existingElixir = newInventory.find(i => i.id === 'elixir');
+                        if (existingElixir) existingElixir.count += 20;
+                        else newInventory.push(elixirs);
+                        
+                        // Add Tickets
+                        const existingTicket = newInventory.find(i => i.id === 'gacha_ticket');
+                        if (existingTicket) existingTicket.count += 20;
+                        else newInventory.push(tickets);
+                        
+                        // Add Weapons
+                        killers.forEach(k => newInventory.push(k));
+                        
+                        return { ...prev, gold: prev.gold + 2500, inventory: newInventory };
+                    });
+                    addLog("관리자 코드 'hello' 적용: 엘릭서 20개, 나이트킬러 2개, 뽑기권 20개, 2500G 지급!", 'gain');
+
+                } else if (code === '1014') {
                     setPlayer(prev => ({ ...prev, gold: prev.gold + 50000 }));
                     addLog("관리자 코드: 50,000G 지급.", 'gain');
                 } else if (code === '3237') {
