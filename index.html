@@ -72,9 +72,9 @@
   "imports": {
     "react": "https://esm.sh/react@18.2.0",
     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0"
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
   }
 }
 </script>
@@ -113,6 +113,7 @@
             { id: 2, title: "레드 게이트: 설원", description: "얼어붙은 숲 속, 백귀들과의 사투.", requiredLevel: 20, bossName: "백귀의 왕", bossRank: Rank.A },
             { id: 3, title: "악마의 성", description: "지옥의 불길 속에서 악마왕 바란을 처치하라.", requiredLevel: 35, bossName: "악마왕 바란", bossRank: Rank.S },
             { id: 4, title: "제주도 레이드", description: "S급 게이트. 개미들의 왕이 기다린다.", requiredLevel: 50, bossName: "개미의 왕 베르", bossRank: Rank.S },
+            { id: 5, title: "히든 챕터: 이중 던전", description: "시작이 있었던 곳으로 돌아갑니다.", requiredLevel: 70, bossName: "시스템 관리자 (개발자)", bossRank: Rank.S }
         ];
 
         // --- COMPONENTS ---
@@ -343,6 +344,9 @@
         };
 
         const generateEnemyLocal = (rank, specificName) => {
+            if (specificName === "시스템 관리자 (개발자)") {
+                return { name: "시스템 관리자 (개발자)", rank: Rank.S, hp: 50000, maxHp: 50000, attack: 2000, description: "이 세계의 창조주입니다.", isBoss: true };
+            }
             if (specificName) {
                 let hp = 100, atk = 10;
                 if (rank === Rank.C) { hp = 800; atk = 60; }
@@ -399,6 +403,12 @@
             const [activeStoryId, setActiveStoryId] = useState(null);
             const [extractionAttempted, setExtractionAttempted] = useState(false);
             const [combatAnim, setCombatAnim] = useState('IDLE');
+            
+            // Dungeon Progress State
+            const [dungeonProgress, setDungeonProgress] = useState({ active: false, current: 0, total: 0, rank: null, theme: '' });
+            
+            // Shop State
+            const [shopMode, setShopMode] = useState('BUY'); // 'BUY' or 'SELL'
 
             const calculatePlayerDamage = (multiplier = 1) => {
                 const companionBonus = player.companions.reduce((acc, curr) => acc + curr.attackBonus, 0);
@@ -415,7 +425,11 @@
             const handleEnterDungeon = async (rank, theme) => {
                 if (loading) return;
                 setLoading(true);
-                addLog(`${rank}급 게이트에 입장합니다...`, 'info');
+                addLog(`${rank}급 게이트에 입장합니다... (총 5개 구역)`, 'info');
+                
+                // Set initial dungeon state for Wave 1
+                setDungeonProgress({ active: true, current: 1, total: 5, rank: rank, theme: theme });
+
                 const scenario = generateDungeonScenarioLocal(rank, theme);
                 addLog(scenario, 'system');
                 setTimeout(async () => {
@@ -424,9 +438,29 @@
                     setGameState('COMBAT');
                     setActiveStoryId(null);
                     setExtractionAttempted(false);
-                    addLog(`[경고] ${enemy.name}(이)가 나타났습니다!`, 'danger');
+                    addLog(`[WAVE 1/5] ${enemy.name}(이)가 나타났습니다!`, 'danger');
                     setLoading(false);
                 }, 1500);
+            };
+
+            const handleNextDungeonWave = () => {
+                const nextWave = dungeonProgress.current + 1;
+                setLoading(true);
+                setDungeonProgress(prev => ({ ...prev, current: nextWave }));
+                setGameState('EXPLORING'); // Brief transition
+                
+                setTimeout(() => {
+                    const enemy = generateEnemyLocal(dungeonProgress.rank);
+                    // Make last wave slightly harder or same
+                    if (nextWave === 5) enemy.isBoss = true; 
+                    
+                    setCurrentEnemy(enemy);
+                    setGameState('COMBAT');
+                    setLastDefeatedEnemy(null);
+                    setExtractionAttempted(false);
+                    setLoading(false);
+                    addLog(`[WAVE ${nextWave}/5] 더 깊은 곳에서 ${enemy.name}(이)가 나타났습니다!`, 'danger');
+                }, 1000);
             };
 
             const handleStartStory = async (storyId) => {
@@ -438,6 +472,9 @@
                 setLoading(true);
                 setActiveStoryId(storyId);
                 setExtractionAttempted(false);
+                // Reset dungeon progress since this is story
+                setDungeonProgress({ active: false, current: 0, total: 0, rank: null, theme: '' });
+                
                 addLog(`[메인 스토리] ${story.title} 시작...`, 'story');
                 addLog(`전설적인 몬스터, ${story.bossName}가 나타났습니다!`, 'system');
                 setTimeout(async () => {
@@ -608,6 +645,24 @@
                 addLog(`${item.name}을(를) 구매했습니다.`, 'gain');
             };
 
+            const handleSellItem = (item, index) => {
+                if (item.isEquipped) {
+                    addLog("장착 중인 아이템은 판매할 수 없습니다.", 'danger');
+                    return;
+                }
+                const sellPrice = Math.floor(item.price * 0.5); // 50% refund
+                const newInventory = [...player.inventory];
+                
+                if (item.type === 'CONSUMABLE' && item.count > 1) {
+                    newInventory[index].count -= 1;
+                } else {
+                    newInventory.splice(index, 1);
+                }
+                
+                updatePlayer({ gold: player.gold + sellPrice, inventory: newInventory });
+                addLog(`${item.name}을(를) ${sellPrice}G에 판매했습니다.`, 'gain');
+            };
+
             const handleUseItem = (itemId) => {
                 const itemIndex = player.inventory.findIndex(i => i.id === itemId);
                 if (itemIndex === -1) return;
@@ -636,6 +691,52 @@
                 }
             };
 
+            const handleGacha = () => {
+                const GACHA_COST = 400;
+                if (player.gold < GACHA_COST) { addLog("골드가 부족합니다.", 'danger'); return; }
+                
+                updatePlayer({ gold: player.gold - GACHA_COST });
+                addLog(`[랜덤 박스] 400골드를 사용하여 상자를 엽니다...`, 'system');
+                
+                const roll = Math.random() * 100;
+                let resultType = 'FAIL';
+                
+                if (roll >= 50 && roll < 70) resultType = 'GOLD';
+                else if (roll >= 70 && roll < 80) resultType = 'ARMOR';
+                else if (roll >= 80 && roll < 90) resultType = 'DAGGER';
+                else if (roll >= 90 && roll < 99.5) resultType = 'SWORD';
+                else if (roll >= 99.5) resultType = 'DEMON';
+                
+                setTimeout(() => {
+                    if (resultType === 'FAIL') {
+                        addLog("꽝! 상자 안에는 아무것도 없었습니다.", 'info');
+                    } else if (resultType === 'GOLD') {
+                        setTimeout(() => updatePlayer({ gold: player.gold - GACHA_COST + 1000 }), 50); 
+                        addLog("축하합니다! 1,000 골드를 획득했습니다.", 'gain');
+                    } else if (resultType === 'ARMOR') {
+                        const armor = { id: `gacha_armor_${Date.now()}`, name: '그림자 군주의 갑주', type: 'ARMOR', slot: 'BODY', description: '군주의 위엄이 서린 갑옷. (방어력 +80)', price: 0, effectValue: 80, uid: Date.now().toString(), isEquipped: false };
+                        const newInv = [...player.inventory, armor];
+                        updatePlayer({ inventory: newInv });
+                        addLog("대박! [그림자 군주의 갑주]를 획득했습니다!", 'gain');
+                    } else if (resultType === 'DAGGER') {
+                        const dagger = { id: `gacha_dagger_${Date.now()}`, name: '그림자 군주의 단검', type: 'WEAPON', slot: 'WEAPON', description: '어둠을 가르는 단검. (공격력 +150)', price: 0, effectValue: 150, uid: Date.now().toString(), isEquipped: false };
+                        const newInv = [...player.inventory, dagger];
+                        updatePlayer({ inventory: newInv });
+                        addLog("대박! [그림자 군주의 단검]을 획득했습니다!", 'gain');
+                    } else if (resultType === 'SWORD') {
+                        const sword = { id: `gacha_sword_${Date.now()}`, name: '그림자 군주의 장검', type: 'WEAPON', slot: 'WEAPON', description: '군주가 휘두르던 검. (공격력 +200)', price: 0, effectValue: 200, uid: Date.now().toString(), isEquipped: false };
+                        const newInv = [...player.inventory, sword];
+                        updatePlayer({ inventory: newInv });
+                        addLog("초대박! [그림자 군주의 장검]을 획득했습니다!", 'gain');
+                    } else if (resultType === 'DEMON') {
+                        const demon = { id: `demon_${Date.now()}`, name: '그림자 타락한 악마', rank: Rank.S, description: '심연에서 돌아온 악마', type: 'SHADOW', role: '악마', attackBonus: 300 };
+                        const newComps = [...player.companions, demon];
+                        updatePlayer({ companions: newComps });
+                        addLog("기적입니다! [그림자 타락한 악마]가 소환되었습니다!", 'gain');
+                    }
+                }, 1000);
+            };
+
             if (gameState === 'COMBAT' && currentEnemy) {
                 return (
                     <div className={`flex-1 flex flex-col gap-4 p-4 bg-red-900/10 border border-red-500/30 rounded-lg relative min-h-[400px] overflow-hidden transition-all duration-200
@@ -643,7 +744,9 @@
                         ${combatAnim === 'SKILL' ? 'animate-skill-flash shadow-[inset_0_0_30px_rgba(59,130,246,0.3)]' : ''}
                         ${combatAnim === 'ATTACK' ? 'shadow-[inset_0_0_20px_rgba(255,255,255,0.1)]' : ''}
                     `}>
-                        <div className="absolute top-2 right-4 text-red-500 font-bold text-xl tracking-wider animate-pulse z-10">COMBAT</div>
+                        <div className="absolute top-2 right-4 text-red-500 font-bold text-xl tracking-wider animate-pulse z-10">
+                            COMBAT {dungeonProgress.active && <span className="text-sm text-gray-400 block text-right">WAVE {dungeonProgress.current}/5</span>}
+                        </div>
                         {combatAnim === 'ATTACK' && <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none"><div className="w-[120%] h-1 bg-white shadow-[0_0_15px_white] rotate-45 animate-pulse"></div></div>}
                         {combatAnim === 'EXTRACTION' && <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none bg-purple-900/60 animate-pulse"><span className="text-6xl">👻</span></div>}
                         
@@ -679,7 +782,7 @@
                                     </button>
                                 ))}
                             </div>
-                            <button onClick={() => { addLog("도망쳤습니다!", 'info'); setGameState('IDLE'); setCurrentEnemy(null); }} className="col-span-2 p-2 text-xs text-gray-500 hover:text-white mt-2">
+                            <button onClick={() => { addLog("도망쳤습니다!", 'info'); setGameState('IDLE'); setCurrentEnemy(null); setDungeonProgress({active:false, current:0, total:0, rank:null, theme:''}); }} className="col-span-2 p-2 text-xs text-gray-500 hover:text-white mt-2">
                                 🏃 도망가기
                             </button>
                         </div>
@@ -701,9 +804,16 @@
                                     그림자 추출 (MP 100)
                                 </button>
                             )}
-                            <button onClick={() => { setGameState('IDLE'); setLastDefeatedEnemy(null); setExtractionAttempted(false); setActiveStoryId(null); }} className="py-3 px-6 bg-gray-800 hover:bg-gray-700 rounded text-white font-bold border border-gray-600">
-                                돌아가기
-                            </button>
+                            
+                            {dungeonProgress.active && dungeonProgress.current < dungeonProgress.total ? (
+                                <button onClick={handleNextDungeonWave} className="py-3 px-6 bg-red-900/50 hover:bg-red-800 rounded text-white font-bold border border-red-500 animate-pulse">
+                                    다음 구역으로 이동 (Wave {dungeonProgress.current + 1}/5)
+                                </button>
+                            ) : (
+                                <button onClick={() => { setGameState('IDLE'); setLastDefeatedEnemy(null); setExtractionAttempted(false); setActiveStoryId(null); setDungeonProgress({active: false, current:0, total:0, rank:null, theme:''}); }} className="py-3 px-6 bg-gray-800 hover:bg-gray-700 rounded text-white font-bold border border-gray-600">
+                                    {dungeonProgress.active ? "던전 클리어 (마을로 복귀)" : "돌아가기"}
+                                </button>
+                            )}
                         </div>
                     </div>
                 );
@@ -758,24 +868,67 @@
                                 ].map((dungeon, idx) => (
                                     <button key={idx} onClick={() => handleEnterDungeon(dungeon.r, dungeon.t)} className="p-4 text-left rounded border border-gray-700 bg-gray-800/30 hover:bg-gray-700 hover:border-system-blue group">
                                         <div className="font-bold text-gray-300 group-hover:text-system-blue">{dungeon.r}급 - {dungeon.t}</div>
-                                        <div className="text-xs text-gray-500">입장하기 &rarr;</div>
+                                        <div className="text-xs text-gray-500">입장하기 (5 Waves) &rarr;</div>
                                     </button>
                                 ))}
                             </div>
                         )}
                         {activeTab === 'SHOP' && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
-                                {SHOP_ITEMS.map((item) => (
-                                    <div key={item.id} className="flex justify-between items-center p-3 bg-gray-900/60 border border-gray-700 rounded hover:border-yellow-600">
-                                        <div>
-                                            <div className="font-bold text-white">{item.name}</div>
-                                            <div className="text-xs text-gray-500">{item.description}</div>
-                                        </div>
-                                        <button onClick={() => handleBuyItem(item)} className="bg-gray-800 hover:bg-yellow-800 px-3 py-1 rounded text-yellow-400 font-mono text-sm border border-gray-600">
-                                            {item.price} G
+                            <div className="space-y-4">
+                                <div className="flex border-b border-gray-800 mb-2">
+                                     <button onClick={() => setShopMode('BUY')} className={`flex-1 py-2 text-xs font-bold ${shopMode === 'BUY' ? 'bg-yellow-900/20 text-yellow-400 border-b border-yellow-400' : 'text-gray-500'}`}>구매하기</button>
+                                     <button onClick={() => setShopMode('SELL')} className={`flex-1 py-2 text-xs font-bold ${shopMode === 'SELL' ? 'bg-red-900/20 text-red-400 border-b border-red-400' : 'text-gray-500'}`}>판매하기 (50%)</button>
+                                </div>
+                                
+                                {shopMode === 'BUY' ? (
+                                <>
+                                    <div className="p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded border border-purple-500/50 flex flex-col items-center gap-3">
+                                        <h3 className="text-lg font-bold text-purple-400">🎁 랜덤 박스 (Lucky Draw)</h3>
+                                        <p className="text-xs text-gray-400 text-center">
+                                            꽝 50% | 1000G 20% | 군주의 장비 29.5% | ??? 0.5%
+                                        </p>
+                                        <button 
+                                            onClick={handleGacha}
+                                            className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded shadow-[0_0_15px_rgba(168,85,247,0.5)] transition-all"
+                                        >
+                                            400 Gold로 뽑기
                                         </button>
                                     </div>
-                                ))}
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
+                                        {SHOP_ITEMS.map((item) => (
+                                            <div key={item.id} className="flex justify-between items-center p-3 bg-gray-900/60 border border-gray-700 rounded hover:border-yellow-600">
+                                                <div>
+                                                    <div className="font-bold text-white">{item.name}</div>
+                                                    <div className="text-xs text-gray-500">{item.description}</div>
+                                                </div>
+                                                <button onClick={() => handleBuyItem(item)} className="bg-gray-800 hover:bg-yellow-800 px-3 py-1 rounded text-yellow-400 font-mono text-sm border border-gray-600">
+                                                    {item.price} G
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
+                                        {player.inventory.length === 0 && <div className="col-span-2 text-center text-gray-500 py-10">판매할 아이템이 없습니다.</div>}
+                                        {player.inventory.map((item, idx) => (
+                                            <div key={`${item.id}-${idx}`} className="flex justify-between items-center p-3 bg-gray-900/60 border border-gray-700 rounded hover:border-red-600">
+                                                <div>
+                                                    <div className="font-bold text-white">{item.name} {item.count && `x${item.count}`}</div>
+                                                    <div className="text-xs text-gray-500">{item.isEquipped ? '장착 중 (판매불가)' : `판매가: ${Math.floor(item.price * 0.5)} G`}</div>
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleSellItem(item, idx)} 
+                                                    disabled={item.isEquipped}
+                                                    className="bg-gray-800 hover:bg-red-900 px-3 py-1 rounded text-red-400 font-mono text-sm border border-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                                                >
+                                                    판매
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
