@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Player, Stats, Skill, Item, EquipmentSlot, Rank } from '../types';
 
 interface StatusWindowProps {
@@ -10,14 +10,15 @@ interface StatusWindowProps {
 }
 
 const getRankColor = (rank: string) => {
-  if (rank === 'S') return 'text-yellow-400 border-yellow-500/50';
-  if (rank === 'A') return 'text-red-400 border-red-500/50';
-  if (rank === 'B') return 'text-purple-400 border-purple-500/50';
-  if (rank === 'C') return 'text-blue-400 border-blue-500/50';
-  return 'text-gray-400 border-gray-500/50';
+  if (rank === 'S') return 'text-yellow-400';
+  if (rank === 'A') return 'text-red-400';
+  if (rank === 'B') return 'text-purple-400';
+  if (rank === 'C') return 'text-blue-400';
+  return 'text-gray-400';
 };
 
 export const StatusWindow: React.FC<StatusWindowProps> = ({ player, onIncreaseStat, onOpenUpgradeModal, onToggleEquip, onOpenCodeModal }) => {
+  const [activeTab, setActiveTab] = useState<'EQUIPMENT' | 'ARMY'>('EQUIPMENT');
   
   // Calculate bonuses for display
   const getEquippedBonus = (type: 'WEAPON' | 'ARMOR') => {
@@ -150,28 +151,71 @@ export const StatusWindow: React.FC<StatusWindowProps> = ({ player, onIncreaseSt
             </div>
         </div>
 
-        {/* Equipped Section */}
-        <div className="relative z-10 border-t border-gray-800 pt-4 mt-4">
-             <h3 className="text-sm font-bold text-gray-400 mb-2">EQUIPMENT</h3>
-             <div className="grid grid-cols-4 gap-2">
-                {(['WEAPON', 'HEAD', 'BODY', 'ACCESSORY'] as EquipmentSlot[]).map(slot => {
-                    const item = getEquippedItem(slot);
-                    return (
-                        <div key={slot} className="aspect-square bg-gray-900/50 border border-gray-700 rounded flex items-center justify-center relative group">
-                             {item ? (
-                                 <>
-                                    <div className="text-xl">{item.type === 'WEAPON' ? '⚔️' : '🛡️'}</div>
-                                    <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-1">
-                                        <span className="text-[10px] text-center text-white leading-tight">{item.name}</span>
-                                    </div>
-                                 </>
-                             ) : (
-                                 <span className="text-xs text-gray-700">{slot.slice(0,1)}</span>
-                             )}
+        {/* Tab Navigation */}
+        <div className="relative z-10 border-t border-gray-800 pt-4 mt-2">
+            <div className="flex gap-4 mb-4">
+                 <button 
+                    onClick={() => setActiveTab('EQUIPMENT')}
+                    className={`text-xs font-bold pb-1 transition-colors ${activeTab === 'EQUIPMENT' ? 'text-white border-b border-white' : 'text-gray-500 hover:text-gray-300'}`}
+                 >
+                     EQUIPMENT
+                 </button>
+                 <button 
+                    onClick={() => setActiveTab('ARMY')}
+                    className={`text-xs font-bold pb-1 transition-colors ${activeTab === 'ARMY' ? 'text-purple-400 border-b border-purple-400' : 'text-gray-500 hover:text-gray-300'}`}
+                 >
+                     SHADOW ARMY <span className="text-[10px] ml-1 bg-gray-800 px-1 rounded">{player.companions.length}</span>
+                 </button>
+            </div>
+
+            {activeTab === 'EQUIPMENT' && (
+                <div className="grid grid-cols-4 gap-2">
+                    {(['WEAPON', 'HEAD', 'BODY', 'ACCESSORY'] as EquipmentSlot[]).map(slot => {
+                        const item = getEquippedItem(slot);
+                        return (
+                            <div key={slot} className="aspect-square bg-gray-900/50 border border-gray-700 rounded flex items-center justify-center relative group">
+                                {item ? (
+                                    <>
+                                        <div className="text-xl">{item.type === 'WEAPON' ? '⚔️' : '🛡️'}</div>
+                                        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-1 z-20">
+                                            <span className="text-[10px] text-center text-white leading-tight">{item.name}</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <span className="text-xs text-gray-700">{slot.slice(0,1)}</span>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
+            {activeTab === 'ARMY' && (
+                <div className="max-h-[150px] overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                    {player.companions.length === 0 ? (
+                        <div className="text-center text-gray-600 text-xs py-4">
+                            보유한 그림자가 없습니다.
                         </div>
-                    )
-                })}
-             </div>
+                    ) : (
+                        player.companions.map((comp, idx) => (
+                            <div key={idx} className="bg-gray-900/50 p-2 rounded border border-gray-800 flex justify-between items-center group hover:border-purple-500/30 transition-colors">
+                                <div>
+                                    <div className={`text-xs font-bold ${getRankColor(comp.rank)}`}>
+                                        {comp.name}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 flex gap-2">
+                                        <span>{comp.role || '병사'}</span>
+                                        <span>{comp.rank}급</span>
+                                    </div>
+                                </div>
+                                <div className="text-xs font-mono text-gray-400 group-hover:text-white">
+                                    ATK +{comp.attackBonus}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
         </div>
     </div>
   );
