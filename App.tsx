@@ -293,7 +293,33 @@ export default function App() {
       const code = codeInput.trim();
       setIsCodeModalOpen(false);
       
-      if (code === '1014') {
+      if (code === 'hello') {
+        const elixirs: Item = { id: 'elixir', name: '엘릭서', type: 'CONSUMABLE', description: '체력과 마력을 완전히 회복합니다.', price: 5000, effectValue: 9999, count: 20 };
+        const killers: Item[] = [
+            { id: 'knight_killer', name: '나이트 킬러', type: 'WEAPON', slot: 'WEAPON', description: '갑옷을 뚫는 단검. (공격력 +35)', price: 30000, effectValue: 35, uid: Date.now().toString(), isEquipped: false },
+            { id: 'knight_killer', name: '나이트 킬러', type: 'WEAPON', slot: 'WEAPON', description: '갑옷을 뚫는 단검. (공격력 +35)', price: 30000, effectValue: 35, uid: (Date.now()+1).toString(), isEquipped: false }
+        ];
+        const tickets: Item = { id: 'gacha_ticket', name: '무료 뽑기권', type: 'CONSUMABLE', description: '랜덤 박스를 1회 무료로 엽니다.', price: 1000, effectValue: 0, count: 20 };
+        
+        setPlayer(prev => {
+            const newInventory = [...prev.inventory];
+            // Add Elixirs
+            const existingElixir = newInventory.find(i => i.id === 'elixir');
+            if (existingElixir) existingElixir.count = (existingElixir.count || 0) + 20;
+            else newInventory.push(elixirs);
+            
+            // Add Tickets
+            const existingTicket = newInventory.find(i => i.id === 'gacha_ticket');
+            if (existingTicket) existingTicket.count = (existingTicket.count || 0) + 20;
+            else newInventory.push(tickets);
+            
+            // Add Weapons
+            killers.forEach(k => newInventory.push(k));
+            
+            return { ...prev, gold: prev.gold + 2500, inventory: newInventory };
+        });
+        addLog("【SYSTEM】 관리자 코드 'hello' 적용: 엘릭서 20개, 나이트킬러 2개, 뽑기권 20개, 2500G 지급!", 'gain');
+      } else if (code === '1014') {
         setPlayer(prev => ({ ...prev, gold: prev.gold + 50000 }));
         addLog("【SYSTEM】 관리자 권한 확인: 50,000 Gold 지급.", 'gain');
     } else if (code === '3237') {

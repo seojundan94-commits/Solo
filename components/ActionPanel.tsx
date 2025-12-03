@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Rank, Enemy, Player, STORIES, Skill, Companion, Item, ItemType } from '../types';
+import { Rank, Enemy, Player, STORIES, Skill, Companion, Item, ItemType, EquipmentSlot } from '../types';
 
 interface ActionPanelProps {
   player: Player;
@@ -528,276 +528,369 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
       }
   };
 
-  const hasExtractSkill = player.skills.some(s => s.id === 'shadow_extract');
+  const handleGacha = () => {
+    const GACHA_COST = 400;
+    
+    // Check for Free Ticket
+    const ticketIndex = player.inventory.findIndex(i => i.id === 'gacha_ticket');
+    const hasTicket = ticketIndex !== -1 && (player.inventory[ticketIndex].count || 0) > 0;
+    
+    if (!hasTicket && player.gold < GACHA_COST) {
+        addLog("골드나 티켓이 부족합니다.", 'danger');
+        return;
+    }
 
-  // -- RENDER --
+    // Prepare state updates
+    let currentInventory = [...player.inventory];
+    let currentGold = player.gold;
 
-  if (gameState === 'COMBAT' && currentEnemy) {
-      return (
-          <div className={`flex-1 flex flex-col gap-4 p-4 bg-red-900/10 border border-red-500/30 rounded-lg relative min-h-[400px] overflow-hidden transition-all duration-200
-            ${combatAnim === 'HIT' ? 'animate-damage-shake border-red-600 bg-red-900/40 shadow-[inset_0_0_50px_rgba(220,38,38,0.5)]' : ''}
-            ${combatAnim === 'SKILL' ? 'animate-skill-flash shadow-[inset_0_0_30px_rgba(59,130,246,0.3)]' : ''}
-            ${combatAnim === 'ATTACK' ? 'shadow-[inset_0_0_20px_rgba(255,255,255,0.1)]' : ''}
-          `}>
-              <div className="absolute top-2 right-4 text-red-500 font-bold text-xl tracking-wider animate-pulse z-10">COMBAT</div>
-              
-              {/* Animation Overlays */}
-              {combatAnim === 'ATTACK' && (
-                  <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
-                       {/* Slash Effect */}
-                       <div className="w-[120%] h-1 bg-white shadow-[0_0_15px_white] rotate-45 transition-all duration-100 opacity-80 animate-pulse"></div>
-                       <div className="absolute w-[120%] h-1 bg-white shadow-[0_0_15px_white] -rotate-45 transition-all duration-100 opacity-50 delay-75 animate-pulse"></div>
-                  </div>
-              )}
-              {combatAnim === 'HIT' && (
-                  <div className="absolute inset-0 z-20 bg-red-600/30 pointer-events-none mix-blend-overlay animate-pulse"></div>
-              )}
-               {combatAnim === 'SKILL' && (
-                  <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                      <div className="w-full h-full bg-blue-500/20 mix-blend-screen animate-pulse"></div>
-                      <div className="absolute w-40 h-40 bg-blue-400 rounded-full blur-3xl opacity-50 animate-ping"></div>
-                  </div>
-              )}
-              {combatAnim === 'EXTRACTION' && (
-                  <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
-                      <div className="absolute inset-0 bg-purple-900/60 mix-blend-multiply animate-pulse"></div>
-                      <div className="flex flex-col items-center animate-bounce">
-                          <span className="text-6xl filter drop-shadow-[0_0_20px_#a855f7]">👻</span>
-                          <span className="text-purple-300 font-bold text-2xl mt-4 drop-shadow-[0_0_10px_#a855f7]">ARISE...</span>
-                      </div>
-                  </div>
-              )}
+    if (hasTicket) {
+         if (ticketIndex !== -1) {
+             if ((currentInventory[ticketIndex].count || 1) > 1) {
+                currentInventory[ticketIndex].count = (currentInventory[ticketIndex].count || 1) - 1;
+            } else {
+                currentInventory.splice(ticketIndex, 1);
+            }
+            addLog("무료 뽑기권을 사용했습니다!", 'info');
+        }
+    } else {
+        currentGold -= GACHA_COST;
+        addLog(`${GACHA_COST}G를 사용하여 상자를 엽니다...`, 'info');
+    }
 
-              {/* Enemy Display */}
-              <div className={`flex flex-col items-center justify-center flex-1 py-4 transition-all duration-150 relative z-10
-                  ${combatAnim === 'ATTACK' ? 'scale-90 opacity-60 translate-x-1 translate-y-1 grayscale brightness-50' : ''}
-                  ${combatAnim === 'HIT' ? 'scale-110 brightness-150' : ''}
-              `}>
-                  <div className={`text-6xl mb-4 filter drop-shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-200
-                      ${combatAnim === 'IDLE' ? 'animate-bounce' : ''}
-                      ${combatAnim === 'ATTACK' ? 'blur-[4px]' : ''}
-                  `}>
-                      {currentEnemy.isBoss ? '👹' : '👾'}
-                  </div>
-                  <h3 className="text-2xl font-bold text-red-400">{currentEnemy.name} <span className="text-sm text-gray-400">({currentEnemy.rank}급)</span></h3>
-                  <div className="w-full max-w-md mt-4 px-4">
-                      <div className="flex justify-between text-sm text-red-300 mb-1">
-                          <span>HP</span>
-                          <span>{Math.max(0, currentEnemy.hp)} / {currentEnemy.maxHp}</span>
-                      </div>
-                      <div className="h-4 bg-gray-900 rounded-full border border-red-900/50 overflow-hidden relative">
-                          <div className="h-full bg-red-600 transition-all duration-200" style={{ width: `${Math.max(0, (currentEnemy.hp / currentEnemy.maxHp) * 100)}%` }}></div>
-                          {/* HP Bar Shine Effect */}
-                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent w-full h-full animate-pulse opacity-30"></div>
-                      </div>
-                  </div>
-              </div>
+    // Roll Logic
+    const roll = Math.random() * 100;
+    let rank: Rank;
+    
+    if (roll < 1) rank = Rank.S; // 1%
+    else if (roll < 5) rank = Rank.A; // 4%
+    else if (roll < 20) rank = Rank.B; // 15%
+    else if (roll < 50) rank = Rank.C; // 30%
+    else rank = Rank.D; // 50%
 
-              {/* Action Buttons */}
-              <div className={`grid grid-cols-2 gap-2 mt-auto transition-all duration-200 transform ${combatAnim === 'ATTACK' ? 'translate-y-2 opacity-50' : ''}`}>
-                  <button onClick={handleAttack} className="p-3 bg-gray-800 hover:bg-red-900 border border-gray-600 hover:border-red-500 rounded text-white font-bold active:scale-95 transition-transform">
-                      ⚔️ 기본 공격
-                  </button>
-                  {player.skills.map(skill => (
-                       skill.effect !== 'summon' && (
-                       <button 
-                           key={skill.id}
-                           onClick={() => handleSkillUse(skill)} 
-                           disabled={player.mp < skill.mpCost}
-                           className="p-3 bg-gray-800 hover:bg-blue-900 border border-gray-600 hover:border-blue-500 rounded text-white disabled:opacity-30 flex flex-col items-center justify-center active:scale-95 transition-transform"
-                       >
-                          <span className="font-bold">{skill.name} <span className="text-xs text-yellow-500">Lv.{skill.level}</span></span>
-                          <span className="text-xs text-blue-300">{skill.mpCost} MP</span>
-                      </button>
-                       )
-                  ))}
-                  
-                  {/* Quick Items in Combat */}
-                  <div className="col-span-2 flex gap-2 mt-2">
-                      {player.inventory.filter(i => i.type === 'CONSUMABLE').map((item) => (
-                          <button
-                            key={item.id}
-                            onClick={() => handleUseItem(item.id)}
-                            className="flex-1 py-2 px-3 bg-gray-800 hover:bg-green-900 border border-gray-600 hover:border-green-500 rounded text-xs text-gray-300 flex justify-between items-center"
-                          >
-                              <span>💊 {item.name}</span>
-                              <span>x{item.count}</span>
-                          </button>
-                      ))}
-                  </div>
+    // Filter items by approximate value matching rank
+    const possibleItems = SHOP_ITEMS.filter(item => {
+        if (rank === Rank.S) return item.price >= 500000;
+        if (rank === Rank.A) return item.price >= 50000 && item.price < 500000;
+        if (rank === Rank.B) return item.price >= 10000 && item.price < 50000;
+        if (rank === Rank.C) return item.price >= 3000 && item.price < 10000;
+        return item.price < 3000;
+    });
 
-                  <button onClick={() => { addLog("도망쳤습니다!", 'info'); setGameState('IDLE'); setCurrentEnemy(null); }} className="col-span-2 p-2 text-xs text-gray-500 hover:text-white mt-2">
-                      🏃 도망가기 (전투 종료)
-                  </button>
-              </div>
-          </div>
-      );
-  }
+    if (possibleItems.length === 0) {
+        addLog("상자가 비어있었습니다... (꽝)", 'info');
+        updatePlayer({ inventory: currentInventory, gold: currentGold });
+        return;
+    }
 
-  if (gameState === 'VICTORY' && lastDefeatedEnemy) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center gap-6 p-6 bg-blue-900/10 border border-system-blue/50 rounded-lg relative min-h-[400px]">
-             <div className="text-4xl font-bold text-system-blue animate-pulse drop-shadow-lg">VICTORY</div>
-             <div className="text-center">
-                 <p className="text-xl text-gray-300 mb-2">{lastDefeatedEnemy.name} 처치!</p>
-                 <p className="text-sm text-gray-500">경험치와 골드를 획득했습니다.</p>
-             </div>
-             
-             <div className="flex flex-col gap-3 w-full max-w-xs">
-                 {hasExtractSkill && (
-                     <button 
-                        onClick={handleExtraction}
-                        disabled={extractionAttempted || player.mp < 100}
-                        className={`py-4 px-6 rounded border border-purple-500 text-purple-300 font-bold transition-all flex flex-col items-center
-                            ${extractionAttempted ? 'bg-gray-900 opacity-50 cursor-not-allowed' : 'bg-purple-900/30 hover:bg-purple-900/60 hover:shadow-[0_0_20px_#a855f7]'}
-                        `}
-                     >
-                         <span className="text-lg">그림자 추출</span>
-                         <span className="text-xs opacity-70 font-normal">마나 100 소모 / 흑화</span>
-                     </button>
-                 )}
-                 
-                 <button 
-                    onClick={handleEndVictory}
-                    className="py-3 px-6 bg-gray-800 hover:bg-gray-700 rounded text-white font-bold border border-gray-600"
-                 >
-                     돌아가기
-                 </button>
-             </div>
-        </div>
-      );
-  }
+    const reward = possibleItems[Math.floor(Math.random() * possibleItems.length)];
+    
+    // Add item
+    if (reward.type === 'CONSUMABLE') {
+        const existingIndex = currentInventory.findIndex(i => i.id === reward.id);
+        if (existingIndex !== -1) {
+            currentInventory[existingIndex] = { 
+                ...currentInventory[existingIndex], 
+                count: (currentInventory[existingIndex].count || 0) + 1 
+            };
+        } else {
+            currentInventory.push({ ...reward, count: 1 });
+        }
+    } else {
+         currentInventory.push({ 
+            ...reward, 
+            uid: Date.now().toString() + Math.random().toString().slice(2),
+            isEquipped: false 
+          });
+    }
+
+    updatePlayer({ inventory: currentInventory, gold: currentGold });
+    addLog(`[${rank}급] ${reward.name} 획득!`, 'gain');
+  };
 
   return (
     <div className="flex-1 flex flex-col gap-4">
-        {/* Top Actions */}
-        <div className="flex gap-2 bg-system-panel p-2 rounded border border-gray-800">
-             <button onClick={handleTraining} className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm">💪 일일 퀘스트: 훈련</button>
-             <button onClick={handleRest} className="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded text-sm">💤 휴식 (회복)</button>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-700">
+        {/* Tabs */}
+        <div className="flex border-b border-system-blue/30">
             <button 
-                onClick={() => setActiveTab('STORY')}
-                className={`flex-1 py-3 text-center font-bold transition-colors ${activeTab === 'STORY' ? 'text-system-blue border-b-2 border-system-blue bg-system-blue/5' : 'text-gray-500 hover:text-gray-300'}`}
+                onClick={() => setActiveTab('STORY')} 
+                className={`flex-1 py-3 text-center font-bold tracking-widest transition-colors ${activeTab === 'STORY' ? 'bg-system-blue/20 text-system-blue border-b-2 border-system-blue' : 'text-gray-500 hover:text-gray-300'}`}
             >
-                📜 메인 스토리
+                STORY
             </button>
             <button 
-                onClick={() => setActiveTab('DUNGEON')}
-                className={`flex-1 py-3 text-center font-bold transition-colors ${activeTab === 'DUNGEON' ? 'text-system-blue border-b-2 border-system-blue bg-system-blue/5' : 'text-gray-500 hover:text-gray-300'}`}
+                onClick={() => setActiveTab('DUNGEON')} 
+                className={`flex-1 py-3 text-center font-bold tracking-widest transition-colors ${activeTab === 'DUNGEON' ? 'bg-system-blue/20 text-system-blue border-b-2 border-system-blue' : 'text-gray-500 hover:text-gray-300'}`}
             >
-                🌀 게이트(던전)
+                DUNGEON
             </button>
-            {player.level >= 5 && (
-                <button 
-                    onClick={() => setActiveTab('SHOP')}
-                    className={`flex-1 py-3 text-center font-bold transition-colors ${activeTab === 'SHOP' ? 'text-yellow-500 border-b-2 border-yellow-500 bg-yellow-500/5' : 'text-gray-500 hover:text-gray-300'}`}
-                >
-                    💰 상점
-                </button>
-            )}
+            <button 
+                onClick={() => setActiveTab('SHOP')} 
+                className={`flex-1 py-3 text-center font-bold tracking-widest transition-colors ${activeTab === 'SHOP' ? 'bg-system-blue/20 text-system-blue border-b-2 border-system-blue' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+                SHOP
+            </button>
         </div>
 
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto min-h-[300px]">
-            {activeTab === 'STORY' && (
-                <div className="space-y-3">
-                    {STORIES.map((story, index) => {
-                        const isLocked = index > player.storyStage;
-                        const isCompleted = index < player.storyStage;
+        {/* Content Area */}
+        <div className="flex-1 bg-black/40 border border-system-blue/30 rounded-lg p-4 relative overflow-hidden min-h-[400px]">
+            {/* Background grid */}
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(0,168,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,168,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
+
+            {gameState === 'COMBAT' && currentEnemy ? (
+                <div className="relative z-10 h-full flex flex-col items-center justify-between animate-in fade-in zoom-in duration-300">
+                    {/* Enemy Status */}
+                    <div className="w-full text-center">
+                        <div className={`text-sm tracking-widest mb-1 ${currentEnemy.isBoss ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
+                            {currentEnemy.isBoss ? '⚠️ WARNING: BOSS ⚠️' : `ENEMY: ${currentEnemy.rank}-RANK`}
+                        </div>
+                        <h2 className="text-3xl font-bold text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)] mb-2">{currentEnemy.name}</h2>
                         
-                        return (
-                            <div key={story.id} className={`relative p-4 rounded border ${isLocked ? 'border-gray-800 bg-gray-900/50 opacity-50' : isCompleted ? 'border-green-900 bg-green-900/10' : 'border-system-blue bg-system-blue/10'}`}>
-                                <div className="flex justify-between items-start mb-2">
-                                    <h4 className={`font-bold ${isCompleted ? 'text-green-500' : isLocked ? 'text-gray-500' : 'text-system-blue'}`}>
-                                        {story.title}
-                                    </h4>
-                                    <span className="text-xs bg-gray-900 px-2 py-1 rounded text-gray-300">Lv.{story.requiredLevel}+</span>
-                                </div>
-                                <p className="text-sm text-gray-400 mb-4">{story.description}</p>
-                                {isCompleted ? (
-                                    <div className="text-xs text-green-500 font-bold">✔ 완료됨</div>
-                                ) : (
-                                    <button 
-                                        onClick={() => !isLocked && handleStartStory(story.id)}
-                                        disabled={isLocked || loading}
-                                        className={`w-full py-2 rounded text-sm font-bold transition-all
-                                            ${isLocked 
-                                                ? 'bg-gray-800 text-gray-600 cursor-not-allowed' 
-                                                : 'bg-system-blue hover:bg-blue-600 text-black hover:shadow-[0_0_10px_#00a8ff]'
-                                            }`}
-                                    >
-                                        {isLocked ? '이전 스토리 완료 필요' : '스토리 시작'}
-                                    </button>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {activeTab === 'DUNGEON' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {loading && <div className="col-span-2 text-center py-10 text-system-blue animate-pulse">게이트 생성 중...</div>}
-                    {!loading && [
-                        { r: Rank.E, t: "지하 수로" },
-                        { r: Rank.D, t: "고블린 숲" },
-                        { r: Rank.C, t: "오크의 늪지대" },
-                        { r: Rank.B, t: "골렘의 광산" },
-                        { r: Rank.B, t: "얼음 동굴" },
-                        { r: Rank.A, t: "설원 (Red Gate)" },
-                        { r: Rank.A, t: "화산 지대" },
-                        { r: Rank.S, t: "제주도 (개미굴)" }
-                    ].map((dungeon, index) => (
-                        <button 
-                            key={`${dungeon.r}-${index}`}
-                            onClick={() => handleEnterDungeon(dungeon.r, dungeon.t)}
-                            className={`p-4 text-left rounded border transition-all group
-                                ${dungeon.r === Rank.S ? 'border-yellow-900 bg-yellow-900/10 hover:bg-yellow-900/20' : 
-                                  dungeon.r === Rank.A ? 'border-red-900 bg-red-900/10 hover:bg-red-900/20' : 
-                                  'border-gray-700 bg-gray-800/30 hover:bg-gray-700'}`}
-                        >
-                            <div className="flex justify-between items-center mb-1">
-                                <span className={`font-bold ${dungeon.r === Rank.S ? 'text-yellow-500' : dungeon.r === Rank.A ? 'text-red-500' : 'text-gray-300'}`}>
-                                    {dungeon.r}급 게이트
-                                </span>
-                                <span className="text-xs text-gray-500">{dungeon.t}</span>
-                            </div>
-                            <div className="text-xs text-gray-400 group-hover:text-white">입장하기 &rarr;</div>
-                        </button>
-                    ))}
-                </div>
-            )}
-
-            {activeTab === 'SHOP' && (
-                 <div className="space-y-4 p-2">
-                    <div className="bg-yellow-900/10 p-3 rounded border border-yellow-700 text-center">
-                        <h4 className="text-yellow-500 font-bold">HUNTER STORE</h4>
-                        <p className="text-xs text-gray-400">헌터들을 위한 필수 보급품</p>
+                        <div className="w-full max-w-md mx-auto mb-4">
+                             <div className="flex justify-between text-xs text-red-400 mb-1 font-bold">
+                                <span>HP</span>
+                                <span>{currentEnemy.hp} / {currentEnemy.maxHp}</span>
+                             </div>
+                             <div className="h-4 bg-gray-900 border border-red-900/50 rounded-full overflow-hidden relative">
+                                <div 
+                                    className="h-full bg-red-600 transition-all duration-300 shadow-[0_0_10px_red]" 
+                                    style={{ width: `${(currentEnemy.hp / currentEnemy.maxHp) * 100}%` }}
+                                />
+                             </div>
+                        </div>
+                        <p className="text-gray-400 text-sm italic">"{currentEnemy.description}"</p>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {SHOP_ITEMS.map((item) => (
-                            <div key={item.id} className="flex justify-between items-center p-3 bg-gray-900/60 border border-gray-700 rounded hover:border-yellow-600 transition-colors">
-                                <div>
-                                    <div className="font-bold text-white">
-                                        {item.name} 
-                                        {item.slot && <span className="text-[10px] text-gray-400 ml-1">[{item.slot}]</span>}
-                                    </div>
-                                    <div className="text-xs text-gray-500">{item.description}</div>
+
+                    {/* Combat Visualizer (Simple) */}
+                    <div className="flex-1 flex items-center justify-center my-4 relative w-full">
+                        <div className={`text-9xl transition-transform duration-100 ${combatAnim === 'HIT' ? 'translate-x-2 text-red-600' : 'text-gray-700'}`}>
+                           {currentEnemy.isBoss ? '🐲' : '👹'}
+                        </div>
+                        
+                        {/* Animation Overlays */}
+                        {combatAnim === 'ATTACK' && (
+                            <div className="absolute text-6xl animate-ping text-white font-bold">💥</div>
+                        )}
+                        {combatAnim === 'SKILL' && (
+                            <div className="absolute text-6xl animate-spin text-blue-500 font-bold">🌀</div>
+                        )}
+                         {combatAnim === 'EXTRACTION' && (
+                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-20">
+                                <div className="text-system-blue text-2xl font-bold animate-pulse tracking-widest">
+                                    RISE...
                                 </div>
-                                <button 
-                                    onClick={() => handleBuyItem(item)}
-                                    className="flex flex-col items-end min-w-[80px] bg-gray-800 hover:bg-yellow-800 px-3 py-1 rounded transition-colors border border-gray-600"
-                                >
-                                    <span className="text-yellow-400 font-mono text-sm">{item.price} G</span>
-                                    <span className="text-[10px] text-gray-300">구매</span>
-                                </button>
                             </div>
+                        )}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="w-full grid grid-cols-2 gap-2 max-w-lg mx-auto">
+                        <button 
+                            onClick={handleAttack}
+                            className="bg-gray-800 hover:bg-gray-700 border border-gray-600 p-4 rounded text-white font-bold transition-all hover:scale-[1.02] active:scale-95"
+                        >
+                            ⚔️ 공격 (Attack)
+                        </button>
+                        
+                        {player.skills.map(skill => (
+                            <button 
+                                key={skill.id}
+                                onClick={() => handleSkillUse(skill)}
+                                className="bg-blue-900/30 hover:bg-blue-800/50 border border-blue-500/50 p-4 rounded text-blue-200 font-bold transition-all hover:scale-[1.02] active:scale-95 flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={player.mp < skill.mpCost || (skill.effect === 'summon')} 
+                            >
+                                <span>⚡ {skill.name}</span>
+                                <span className="text-xs text-blue-400 font-normal">{skill.mpCost} MP</span>
+                            </button>
                         ))}
                     </div>
-                 </div>
+                </div>
+            ) : gameState === 'VICTORY' ? (
+                 <div className="h-full flex flex-col items-center justify-center animate-in zoom-in duration-300">
+                    <h2 className="text-4xl font-bold text-yellow-400 mb-4 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]">VICTORY</h2>
+                    <p className="text-gray-300 mb-8">적을 성공적으로 제압했습니다.</p>
+                    
+                    <div className="flex flex-col gap-3 w-full max-w-xs">
+                        {/* Shadow Extraction Button */}
+                        {lastDefeatedEnemy && player.skills.some(s => s.id === 'shadow_extract') && !extractionAttempted && (
+                            <button 
+                                onClick={handleExtraction}
+                                className="w-full py-3 bg-black border border-system-blue text-system-blue font-bold rounded hover:bg-system-blue hover:text-black transition-all shadow-[0_0_15px_rgba(0,168,255,0.3)] animate-pulse"
+                            >
+                                ✋ 그림자 추출 (Shadow Extraction)
+                            </button>
+                        )}
+                        
+                        <button 
+                            onClick={handleEndVictory}
+                            className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white rounded font-bold"
+                        >
+                            돌아가기
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                /* Non-Combat Views */
+                <div className="h-full overflow-y-auto custom-scrollbar relative z-10">
+                    {activeTab === 'STORY' && (
+                        <div className="space-y-4">
+                            <h3 className="text-xl font-bold text-white border-b border-gray-700 pb-2 mb-4">MAIN SCENARIO</h3>
+                            {STORIES.map((story) => {
+                                const isLocked = player.level < story.requiredLevel;
+                                const isCompleted = player.storyStage > story.id;
+                                const isCurrent = player.storyStage === story.id;
+
+                                return (
+                                    <div 
+                                        key={story.id} 
+                                        className={`p-4 border rounded-lg transition-all relative overflow-hidden
+                                            ${isCompleted ? 'bg-gray-900/50 border-gray-800 opacity-50' : ''}
+                                            ${isCurrent ? 'bg-blue-900/20 border-system-blue shadow-[0_0_10px_rgba(0,168,255,0.1)]' : ''}
+                                            ${isLocked ? 'bg-gray-900 border-gray-800 opacity-70 cursor-not-allowed' : ''}
+                                        `}
+                                    >
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <span className={`text-xs font-bold px-2 py-0.5 rounded mr-2 ${isCurrent ? 'bg-system-blue text-black' : 'bg-gray-700 text-gray-400'}`}>
+                                                    {isCompleted ? 'CLEARED' : isCurrent ? 'CURRENT' : 'LOCKED'}
+                                                </span>
+                                                <h4 className="inline text-lg font-bold text-gray-200">{story.title}</h4>
+                                            </div>
+                                            <span className={`text-sm font-mono ${Rank[story.bossRank] === 'S' ? 'text-yellow-500' : 'text-red-400'}`}>
+                                                Boss: {story.bossRank}급
+                                            </span>
+                                        </div>
+                                        <p className="text-gray-400 text-sm mb-4">{story.description}</p>
+                                        
+                                        {!isCompleted && !isLocked && (
+                                             <button 
+                                                onClick={() => handleStartStory(story.id)}
+                                                className="w-full py-2 bg-system-blue/10 hover:bg-system-blue hover:text-black border border-system-blue/50 text-system-blue rounded transition-all text-sm font-bold"
+                                             >
+                                                 입장하기 (Lv.{story.requiredLevel}+)
+                                             </button>
+                                        )}
+                                        {isLocked && (
+                                            <div className="text-xs text-red-500 mt-2">
+                                                🔒 필요 레벨: {story.requiredLevel}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {activeTab === 'DUNGEON' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2 text-gray-400 text-sm mb-2 p-2 bg-blue-900/10 border border-blue-900/30 rounded">
+                                ※ 인스턴스 던전에서는 경험치와 골드를 획득할 수 있습니다.
+                            </div>
+                            
+                            {(['E', 'D', 'C', 'B', 'A', 'S'] as Rank[]).map((rank) => (
+                                <button
+                                    key={rank}
+                                    onClick={() => handleEnterDungeon(rank)}
+                                    disabled={loading}
+                                    className={`p-6 border rounded-lg flex flex-col items-center justify-center gap-2 transition-all group
+                                        ${rank === 'S' ? 'bg-yellow-900/10 border-yellow-500/30 hover:bg-yellow-900/30 hover:border-yellow-500' : ''}
+                                        ${rank === 'A' ? 'bg-red-900/10 border-red-500/30 hover:bg-red-900/30 hover:border-red-500' : ''}
+                                        ${['B','C'].includes(rank) ? 'bg-blue-900/10 border-blue-500/30 hover:bg-blue-900/30 hover:border-blue-500' : ''}
+                                        ${['D','E'].includes(rank) ? 'bg-gray-900/30 border-gray-700 hover:bg-gray-800 hover:border-gray-500' : ''}
+                                    `}
+                                >
+                                    <span className={`text-4xl font-bold ${rank === 'S' ? 'text-yellow-500' : rank === 'A' ? 'text-red-500' : 'text-gray-300'}`}>
+                                        {rank}
+                                    </span>
+                                    <span className="text-xs text-gray-500 group-hover:text-white transition-colors">GATE</span>
+                                </button>
+                            ))}
+
+                            <div className="md:col-span-2 mt-4 grid grid-cols-2 gap-4">
+                                <button 
+                                    onClick={handleTraining}
+                                    className="p-4 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 text-gray-300 hover:text-white transition-all flex flex-col items-center gap-1"
+                                >
+                                    <span>🏃 일일 퀘스트 (Training)</span>
+                                    <span className="text-xs text-gray-500">HP -5 / 소량의 EXP 획득</span>
+                                </button>
+                                <button 
+                                    onClick={handleRest}
+                                    className="p-4 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 text-gray-300 hover:text-white transition-all flex flex-col items-center gap-1"
+                                >
+                                    <span>💤 휴식 (Rest)</span>
+                                    <span className="text-xs text-gray-500">HP/MP 50% 회복</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'SHOP' && (
+                        <div className="space-y-6">
+                            {/* Gacha Section */}
+                            <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 p-4 rounded-lg border border-purple-500/30">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="text-purple-400 font-bold">📦 랜덤 박스 (Gacha)</h3>
+                                    <span className="text-xs text-gray-400">1회 400G</span>
+                                </div>
+                                <p className="text-xs text-gray-500 mb-4">장비, 소비 아이템을 무작위로 획득합니다.</p>
+                                <button 
+                                    onClick={handleGacha}
+                                    className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded shadow-[0_0_15px_rgba(147,51,234,0.3)] transition-all active:scale-95"
+                                >
+                                    박스 열기
+                                </button>
+                            </div>
+
+                            {/* Inventory / Use Items */}
+                             <div>
+                                <h3 className="text-white font-bold border-b border-gray-700 pb-2 mb-2">MY INVENTORY</h3>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {player.inventory.filter(i => i.type === 'CONSUMABLE').length === 0 && (
+                                        <div className="col-span-4 text-gray-500 text-xs text-center py-4">소비 아이템이 없습니다.</div>
+                                    )}
+                                    {Array.from(new Set(player.inventory.filter(i => i.type === 'CONSUMABLE').map(i => i.id))).map(itemId => {
+                                        const item = player.inventory.find(i => i.id === itemId);
+                                        if(!item) return null;
+                                        return (
+                                            <button 
+                                                key={item.id}
+                                                onClick={() => handleUseItem(item.id)}
+                                                className="bg-gray-800 hover:bg-gray-700 border border-gray-600 p-2 rounded flex flex-col items-center gap-1 group relative"
+                                                title={item.description}
+                                            >
+                                                <span className="text-xs text-gray-300 truncate w-full text-center">{item.name}</span>
+                                                <span className="text-[10px] text-gray-500">x{item.count}</span>
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Shop List */}
+                            <div>
+                                <h3 className="text-white font-bold border-b border-gray-700 pb-2 mb-2">ITEM SHOP</h3>
+                                <div className="space-y-2">
+                                    {SHOP_ITEMS.map((item) => (
+                                        <div key={item.id} className="flex justify-between items-center bg-black/30 p-3 rounded border border-gray-800 hover:border-gray-600 transition-colors">
+                                            <div>
+                                                <div className="font-bold text-gray-300 text-sm">{item.name}</div>
+                                                <div className="text-xs text-gray-500">{item.description}</div>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleBuyItem(item)}
+                                                disabled={player.gold < item.price}
+                                                className="px-3 py-1 bg-system-blue/10 hover:bg-system-blue/30 text-system-blue border border-system-blue/30 rounded text-xs transition-colors disabled:opacity-30 disabled:cursor-not-allowed min-w-[80px]"
+                                            >
+                                                {item.price} G
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
             )}
         </div>
     </div>

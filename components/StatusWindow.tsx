@@ -151,4 +151,28 @@ export const StatusWindow: React.FC<StatusWindowProps> = ({ player, onIncreaseSt
         </div>
 
         {/* Equipped Section */}
-        <div className="relative z-10 border-t border-gray-800 pt-
+        <div className="relative z-10 border-t border-gray-800 pt-4 mt-4">
+             <h3 className="text-sm font-bold text-gray-400 mb-2">EQUIPMENT</h3>
+             <div className="grid grid-cols-4 gap-2">
+                {(['WEAPON', 'HEAD', 'BODY', 'ACCESSORY'] as EquipmentSlot[]).map(slot => {
+                    const item = getEquippedItem(slot);
+                    return (
+                        <div key={slot} className="aspect-square bg-gray-900/50 border border-gray-700 rounded flex items-center justify-center relative group">
+                             {item ? (
+                                 <>
+                                    <div className="text-xl">{item.type === 'WEAPON' ? '⚔️' : '🛡️'}</div>
+                                    <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-1">
+                                        <span className="text-[10px] text-center text-white leading-tight">{item.name}</span>
+                                    </div>
+                                 </>
+                             ) : (
+                                 <span className="text-xs text-gray-700">{slot.slice(0,1)}</span>
+                             )}
+                        </div>
+                    )
+                })}
+             </div>
+        </div>
+    </div>
+  );
+};

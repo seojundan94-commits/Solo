@@ -72,9 +72,9 @@
   "imports": {
     "react": "https://esm.sh/react@18.2.0",
     "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-    "@google/genai": "https://esm.sh/@google/genai@0.1.0",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0"
   }
 }
 </script>
@@ -97,7 +97,7 @@
 
         // --- CONSTANTS & TYPES ---
         
-        // Process shim for browser compatibility
+        // Process shim
         if (typeof process === 'undefined') {
             window.process = { env: { API_KEY: '' } };
         }
@@ -399,8 +399,7 @@
             { id: 'ring_str', name: '힘의 반지', type: 'WEAPON', slot: 'ACCESSORY', description: '착용 시 힘이 솟습니다. (공격력 +10)', price: 20000, effectValue: 10 },
             { id: 'neck_def', name: '수호의 목걸이', type: 'ARMOR', slot: 'ACCESSORY', description: '착용 시 보호막 생성. (방어력 +15)', price: 20000, effectValue: 15 },
         ];
-        // Remove gacha_ticket from purchasable shop items to keep it exclusive, or keep it at high price? 
-        // Let's filter it out of the SHOP_ITEMS display array but keep in definitions.
+        
         const SHOP_ITEMS = SHOP_ITEMS_RAW.filter(i => i.id !== 'gacha_ticket').sort((a, b) => a.price - b.price);
 
         // ActionPanel Component
@@ -696,7 +695,7 @@
                 
                 // Check for Free Ticket
                 const ticketIndex = player.inventory.findIndex(i => i.id === 'gacha_ticket');
-                const hasTicket = ticketIndex !== -1;
+                const hasTicket = ticketIndex !== -1 && (player.inventory[ticketIndex].count || 0) > 0;
                 
                 if (!hasTicket && player.gold < GACHA_COST) { addLog("골드가 부족합니다.", 'danger'); return; }
                 
@@ -767,7 +766,7 @@
 
             const getTicketCount = () => {
                 const ticket = player.inventory.find(i => i.id === 'gacha_ticket');
-                return ticket ? (ticket.count || 1) : 0;
+                return ticket ? (ticket.count || 0) : 0;
             };
 
             if (gameState === 'COMBAT' && currentEnemy) {
@@ -1159,12 +1158,12 @@
                         const newInventory = [...prev.inventory];
                         // Add Elixirs
                         const existingElixir = newInventory.find(i => i.id === 'elixir');
-                        if (existingElixir) existingElixir.count += 20;
+                        if (existingElixir) existingElixir.count = (existingElixir.count || 0) + 20;
                         else newInventory.push(elixirs);
                         
                         // Add Tickets
                         const existingTicket = newInventory.find(i => i.id === 'gacha_ticket');
-                        if (existingTicket) existingTicket.count += 20;
+                        if (existingTicket) existingTicket.count = (existingTicket.count || 0) + 20;
                         else newInventory.push(tickets);
                         
                         // Add Weapons
