@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Rank, Enemy, Player, STORIES, Skill, Companion, Item, ItemType, EquipmentSlot } from '../types';
+
+import React, { useState, useMemo } from 'react';
+import { Rank, Enemy, Player, Skill, Companion, Item, PlayerClass, EquipmentSlot } from '../types';
 
 interface ActionPanelProps {
   player: Player;
@@ -9,890 +10,408 @@ interface ActionPanelProps {
   onPlayerDamage: (damage: number) => void;
 }
 
-type GameState = 'IDLE' | 'EXPLORING' | 'COMBAT' | 'VICTORY';
-type TabState = 'DUNGEON' | 'STORY' | 'SHOP';
-type CombatAnimState = 'IDLE' | 'ATTACK' | 'HIT' | 'SKILL' | 'EXTRACTION';
+type GameState = 'IDLE' | 'COMBAT' | 'VICTORY' | 'SHOP' | 'DEFEAT';
+type CombatAnim = 'NORMAL' | 'HIT' | 'EXTRACTION';
+type ShopCategory = 'ALL' | 'CONSUMABLE' | 'WEAPON' | 'ARMOR';
 
-// --- Local Data Generation Logic (Replaces GeminiService) ---
-
-const generateDungeonScenarioLocal = (rank: Rank, theme?: string): string => {
-    const base = `${rank}급 게이트에 입장했습니다.`;
-    const themeDesc = theme ? `${theme}의 차가운 공기가 피부를 스칩니다.` : "어둠이 짙게 깔려 있습니다.";
-    const danger = "어디선가 몬스터의 기척이 느껴집니다.";
-    return `${base} ${themeDesc} ${danger}`;
+const getRankColor = (rank: Rank) => {
+  switch (rank) {
+    case Rank.S: return 'text-yellow-400';
+    case Rank.A: return 'text-red-500';
+    case Rank.B: return 'text-purple-500';
+    case Rank.C: return 'text-blue-500';
+    case Rank.D: return 'text-green-500';
+    default: return 'text-gray-400';
+  }
 };
 
-const ENEMIES_BY_RANK: Record<Rank, Enemy[]> = {
+// --- 확장된 몬스터 데이터 ---
+const ENEMIES_POOL: Record<Rank, Enemy[]> = {
     [Rank.E]: [
-        { name: "고블린", rank: Rank.E, hp: 50, maxHp: 50, attack: 8, description: "작고 교활한 몬스터입니다.", isBoss: false },
-        { name: "슬라임", rank: Rank.E, hp: 60, maxHp: 60, attack: 5, description: "점액질의 몬스터입니다.", isBoss: false },
-        { name: "강철 이빨 늑대", rank: Rank.E, hp: 80, maxHp: 80, attack: 12, description: "날카로운 이빨을 가졌습니다.", isBoss: false }
+        { name: "굶주린 고블린", rank: Rank.E, hp: 60, maxHp: 60, attack: 10, description: "비쩍 마른 고블린입니다.", isBoss: false },
+        { name: "동굴 거미", rank: Rank.E, hp: 80, maxHp: 80, attack: 12, description: "끈적한 거미줄을 내뿜습니다.", isBoss: false },
+        { name: "슬라임", rank: Rank.E, hp: 50, maxHp: 50, attack: 8, description: "말랑말랑한 괴물입니다.", isBoss: false }
     ],
     [Rank.D]: [
-        { name: "홉 고블린", rank: Rank.D, hp: 150, maxHp: 150, attack: 25, description: "일반 고블린보다 덩치가 큽니다.", isBoss: false },
-        { name: "스톤 골렘", rank: Rank.D, hp: 300, maxHp: 300, attack: 15, description: "돌로 이루어진 단단한 몬스터입니다.", isBoss: false }
+        { name: "홉 고블린", rank: Rank.D, hp: 200, maxHp: 200, attack: 25, description: "거구의 고블린입니다.", isBoss: false },
+        { name: "회색 늑대", rank: Rank.D, hp: 180, maxHp: 180, attack: 30, description: "무리를 지어 다닙니다.", isBoss: false },
+        { name: "좀비 전사", rank: Rank.D, hp: 250, maxHp: 250, attack: 20, description: "죽지 않는 병사입니다.", isBoss: false }
     ],
     [Rank.C]: [
-        { name: "리자드맨", rank: Rank.C, hp: 400, maxHp: 400, attack: 45, description: "비늘로 덮인 인간형 몬스터입니다.", isBoss: false },
-        { name: "자이언트 스파이더", rank: Rank.C, hp: 350, maxHp: 350, attack: 50, description: "거대한 독거미입니다.", isBoss: false },
-        { name: "고블린 마법사", rank: Rank.C, hp: 250, maxHp: 250, attack: 70, description: "화염구를 던지는 고블린입니다.", isBoss: false },
-        { name: "다크 엘프 궁수", rank: Rank.C, hp: 300, maxHp: 300, attack: 65, description: "정확한 사격을 가하는 엘프입니다.", isBoss: false }
+        { name: "리자드맨 정찰병", rank: Rank.C, hp: 500, maxHp: 500, attack: 55, description: "창술이 뛰어납니다.", isBoss: false },
+        { name: "검은 호랑이", rank: Rank.C, hp: 600, maxHp: 600, attack: 65, description: "매우 빠릅니다.", isBoss: false },
+        { name: "스켈레톤 나이트", rank: Rank.C, hp: 700, maxHp: 700, attack: 60, description: "뼈로 된 갑옷을 입었습니다.", isBoss: false }
     ],
     [Rank.B]: [
-        { name: "아이언 골렘", rank: Rank.B, hp: 1000, maxHp: 1000, attack: 70, description: "강철로 만들어진 골렘입니다.", isBoss: false },
-        { name: "설인", rank: Rank.B, hp: 900, maxHp: 900, attack: 80, description: "혹한의 추위를 견디는 몬스터입니다.", isBoss: false },
-        { name: "화염 도마뱀", rank: Rank.B, hp: 800, maxHp: 800, attack: 90, description: "몸에서 불길이 솟아오릅니다.", isBoss: false },
-        { name: "오크 주술사", rank: Rank.B, hp: 600, maxHp: 600, attack: 120, description: "저주를 거는 오크입니다.", isBoss: false },
-        { name: "타락한 사제", rank: Rank.B, hp: 700, maxHp: 700, attack: 60, description: "어둠의 힘으로 회복합니다.", isBoss: false }
+        { name: "철의 골렘", rank: Rank.B, hp: 1500, maxHp: 1500, attack: 100, description: "방어력이 매우 높습니다.", isBoss: false },
+        { name: "와이번", rank: Rank.B, hp: 1200, maxHp: 1200, attack: 120, description: "하늘에서 공격합니다.", isBoss: false },
+        { name: "아이스 엘프", rank: Rank.B, hp: 1300, maxHp: 1300, attack: 110, description: "냉기 마법을 씁니다.", isBoss: false }
     ],
     [Rank.A]: [
-        { name: "하이 오크 전사", rank: Rank.A, hp: 2000, maxHp: 2000, attack: 120, description: "붉은 피부의 고위 오크입니다.", isBoss: false },
-        { name: "설원의 백귀", rank: Rank.A, hp: 1800, maxHp: 1800, attack: 130, description: "눈보라 속에 숨은 귀신입니다.", isBoss: false },
-        { name: "마그마 거인", rank: Rank.A, hp: 2500, maxHp: 2500, attack: 110, description: "용암에서 태어난 거인입니다.", isBoss: false },
-        { name: "암살자 나이트", rank: Rank.A, hp: 1500, maxHp: 1500, attack: 180, description: "그림자 속에 숨어 공격합니다.", isBoss: false }
+        { name: "하이 오크 전사", rank: Rank.A, hp: 3500, maxHp: 3500, attack: 200, description: "전투의 화신입니다.", isBoss: false },
+        { name: "블러드 뱀파이어", rank: Rank.A, hp: 3000, maxHp: 3000, attack: 250, description: "피를 갈구합니다.", isBoss: false },
+        { name: "나태의 지옥견", rank: Rank.A, hp: 4000, maxHp: 4000, attack: 220, description: "지옥의 파수꾼입니다.", isBoss: false }
     ],
     [Rank.S]: [
-        { name: "드래곤", rank: Rank.S, hp: 10000, maxHp: 10000, attack: 500, description: "최상위 포식자입니다.", isBoss: true },
-        { name: "거인왕", rank: Rank.S, hp: 12000, maxHp: 12000, attack: 450, description: "모든 것을 짓밟는 왕입니다.", isBoss: true }
+        { name: "고대 용의 후예", rank: Rank.S, hp: 12000, maxHp: 12000, attack: 600, description: "용의 숨결을 내뿜습니다.", isBoss: false },
+        { name: "카르갈간 (보스)", rank: Rank.S, hp: 20000, maxHp: 20000, attack: 800, description: "하이 오크들의 주술사 왕입니다.", isBoss: true },
+        { name: "베르 (보스)", rank: Rank.S, hp: 25000, maxHp: 25000, attack: 950, description: "개미들의 왕입니다.", isBoss: true }
     ]
 };
 
-const generateEnemyLocal = (rank: Rank, specificName?: string): Enemy => {
-    if (specificName) {
-        // Boss fallback stats
-        let hp = 100, atk = 10;
-        if (rank === Rank.C) { hp = 800; atk = 60; }
-        if (rank === Rank.A) { hp = 4000; atk = 200; }
-        if (rank === Rank.S) { hp = 20000; atk = 1000; }
-        
-        return {
-            name: specificName,
-            rank,
-            hp,
-            maxHp: hp,
-            attack: atk,
-            description: "던전의 주인입니다.",
-            isBoss: true
-        };
-    }
+// --- 확장된 100개 아이템 데이터 생성 함수 ---
+const generateItems = (): Item[] => {
+    const items: Item[] = [];
     
-    const candidates = ENEMIES_BY_RANK[rank];
-    const template = candidates[Math.floor(Math.random() * candidates.length)];
-    
-    // Variance
-    const variance = 0.9 + Math.random() * 0.2; // 0.9 ~ 1.1
-    const finalHp = Math.floor(template.maxHp * variance);
-    const finalAtk = Math.floor(template.attack * variance);
+    // 1. 소모품 (회복 및 스탯)
+    const potions = [
+        { prefix: '하급', heal: 100, price: 100 },
+        { prefix: '중급', heal: 500, price: 400 },
+        { prefix: '상급', heal: 1500, price: 1000 },
+        { prefix: '최상급', heal: 5000, price: 3000 },
+        { prefix: '기적의', heal: 99999, price: 10000 }
+    ];
+    potions.forEach(p => {
+        items.push({ id: `hp_${p.prefix}`, name: `${p.prefix} 생명력 물약`, type: 'CONSUMABLE', description: `HP를 ${p.heal}만큼 회복합니다.`, price: p.price, effectValue: p.heal });
+        items.push({ id: `mp_${p.prefix}`, name: `${p.prefix} 정신력 물약`, type: 'CONSUMABLE', description: `MP를 ${p.heal/2}만큼 회복합니다.`, price: p.price, effectValue: p.heal/2 });
+    });
 
-    return {
-        ...template,
-        hp: finalHp,
-        maxHp: finalHp,
-        attack: finalAtk
-    };
+    const elixirs = ['근력', '민첩', '감각', '체력', '지능'];
+    elixirs.forEach(e => {
+        items.push({ id: `elixir_${e}`, name: `${e}의 영약`, type: 'CONSUMABLE', description: `${e} 스탯을 영구히 1 증가시킵니다.`, price: 5000, effectValue: 1 });
+    });
+
+    // 2. 무기 (단검, 장검, 낫, 지팡이)
+    const weaponTypes = [
+        { name: '단검', slot: 'WEAPON' as EquipmentSlot, bonus: 1.0 },
+        { name: '장검', slot: 'WEAPON' as EquipmentSlot, bonus: 1.5 },
+        { name: '대검', slot: 'WEAPON' as EquipmentSlot, bonus: 2.0 },
+        { name: '낫', slot: 'WEAPON' as EquipmentSlot, bonus: 2.5 }
+    ];
+    const ranks = [
+        { r: '낡은', multi: 0.5, price: 500 },
+        { r: '강철', multi: 1.2, price: 2000 },
+        { r: '명장의', multi: 2.5, price: 8000 },
+        { r: '전설의', multi: 6.0, price: 30000 },
+        { r: '신화의', multi: 15.0, price: 100000 },
+        { r: '군주의', multi: 40.0, price: 500000 }
+    ];
+    weaponTypes.forEach(w => {
+        ranks.forEach(r => {
+            items.push({
+                id: `wpn_${w.name}_${r.r}`,
+                name: `${r.r} ${w.name}`,
+                type: 'WEAPON',
+                slot: w.slot,
+                description: `${r.r} 등급의 ${w.name}입니다. 공격력이 대폭 상승합니다.`,
+                price: r.price,
+                effectValue: Math.floor(20 * w.bonus * r.multi)
+            });
+        });
+    });
+
+    // 3. 방어구 (머리, 몸, 액세서리)
+    const armorSlots = [
+        { name: '투구', slot: 'HEAD' as EquipmentSlot },
+        { name: '갑옷', slot: 'BODY' as EquipmentSlot },
+        { name: '망토', slot: 'ACCESSORY' as EquipmentSlot },
+        { name: '반지', slot: 'ACCESSORY' as EquipmentSlot }
+    ];
+    armorSlots.forEach(a => {
+        ranks.forEach(r => {
+            items.push({
+                id: `arm_${a.name}_${r.r}`,
+                name: `${r.r} ${a.name}`,
+                type: 'ARMOR',
+                slot: a.slot,
+                description: `${r.r} 등급의 ${a.name}입니다. 방어력이 상승합니다.`,
+                price: r.price,
+                effectValue: Math.floor(10 * r.multi)
+            });
+        });
+    });
+
+    // 4. 유니크 아이템 (원작 반영)
+    items.push({ id: 'kasaka_fang', name: '카사카의 독니', type: 'WEAPON', slot: 'WEAPON', description: '마비와 출혈 효과가 깃든 단검입니다.', price: 15000, effectValue: 120 });
+    items.push({ id: 'demon_king_dagger', name: '악마왕의 단검', type: 'WEAPON', slot: 'WEAPON', description: '악마왕 바란이 사용하던 무기입니다.', price: 80000, effectValue: 450 });
+    items.push({ id: 'orb_of_avarice', name: '탐욕의 구슬', type: 'ARMOR', slot: 'ACCESSORY', description: '마법 공격력을 두 배로 증폭시킵니다.', price: 120000, effectValue: 800 });
+
+    return items;
 };
 
-// --- Shop Data ---
+const SHOP_ITEMS = generateItems();
 
-const SHOP_ITEMS_RAW: Item[] = [
-    // Consumables
-    { id: 'hp_potion_s', name: '소형 HP 포션', type: 'CONSUMABLE', description: '체력을 50 회복합니다.', price: 100, effectValue: 50, count: 1 },
-    { id: 'hp_potion_m', name: '중형 HP 포션', type: 'CONSUMABLE', description: '체력을 200 회복합니다.', price: 300, effectValue: 200, count: 1 },
-    { id: 'hp_potion_l', name: '대형 HP 포션', type: 'CONSUMABLE', description: '체력을 500 회복합니다.', price: 800, effectValue: 500, count: 1 },
-    { id: 'hp_potion_x', name: '초대형 HP 포션', type: 'CONSUMABLE', description: '체력을 1000 회복합니다.', price: 2000, effectValue: 1000, count: 1 },
-    
-    { id: 'mp_potion_s', name: '소형 MP 포션', type: 'CONSUMABLE', description: '마력을 30 회복합니다.', price: 100, effectValue: 30, count: 1 },
-    { id: 'mp_potion_m', name: '중형 MP 포션', type: 'CONSUMABLE', description: '마력을 100 회복합니다.', price: 300, effectValue: 100, count: 1 },
-    { id: 'mp_potion_l', name: '대형 MP 포션', type: 'CONSUMABLE', description: '마력을 300 회복합니다.', price: 800, effectValue: 300, count: 1 },
-    { id: 'elixir', name: '엘릭서', type: 'CONSUMABLE', description: '체력과 마력을 완전히 회복합니다.', price: 5000, effectValue: 9999, count: 1 },
-
-    // Weapons
-    { id: 'iron_sword', name: '강철 검', type: 'WEAPON', slot: 'WEAPON', description: '기본적인 검. (공격력 +5)', price: 1000, effectValue: 5 },
-    { id: 'knight_dagger', name: '기사의 단검', type: 'WEAPON', slot: 'WEAPON', description: '예리한 단검. (공격력 +10)', price: 5000, effectValue: 10 },
-    { id: 'steel_dagger', name: '정밀한 강철 단검', type: 'WEAPON', slot: 'WEAPON', description: '숙련자를 위한 단검. (공격력 +15)', price: 8000, effectValue: 15 },
-    { id: 'orc_axe', name: '오크 대장군의 도끼', type: 'WEAPON', slot: 'WEAPON', description: '파괴력이 뛰어납니다. (공격력 +25)', price: 15000, effectValue: 25 },
-    { id: 'knight_killer', name: '나이트 킬러', type: 'WEAPON', slot: 'WEAPON', description: '갑옷을 뚫는 단검. (공격력 +35)', price: 30000, effectValue: 35 },
-    { id: 'magic_sword', name: '마력 깃든 장검', type: 'WEAPON', slot: 'WEAPON', description: '마력이 흐르는 검. (공격력 +50)', price: 60000, effectValue: 50 },
-    { id: 'baruka_dagger', name: '바루카의 단검', type: 'WEAPON', slot: 'WEAPON', description: '민첩함을 극대화합니다. (공격력 +75)', price: 120000, effectValue: 75 },
-    { id: 'demon_longsword', name: '악마왕의 장검', type: 'WEAPON', slot: 'WEAPON', description: '전율이 느껴지는 검. (공격력 +120)', price: 250000, effectValue: 120 },
-    { id: 'kamish_wrath', name: '카미쉬의 분노', type: 'WEAPON', slot: 'WEAPON', description: '용의 뼈로 만든 최강의 단검. (공격력 +300)', price: 1000000, effectValue: 300 },
-
-    // Armor (Body)
-    { id: 'leather_armor', name: '가죽 갑옷', type: 'ARMOR', slot: 'BODY', description: '활동하기 편한 갑옷. (방어력 +5)', price: 1500, effectValue: 5 },
-    { id: 'hard_leather', name: '경화 가죽 갑옷', type: 'ARMOR', slot: 'BODY', description: '단단하게 가공된 가죽. (방어력 +10)', price: 3000, effectValue: 10 },
-    { id: 'chainmail', name: '사슬 갑옷', type: 'ARMOR', slot: 'BODY', description: '베기 공격을 막아줍니다. (방어력 +18)', price: 7500, effectValue: 18 },
-    { id: 'plate_armor', name: '판금 갑옷', type: 'ARMOR', slot: 'BODY', description: '단단한 강철 갑옷. (방어력 +30)', price: 25000, effectValue: 30 },
-    { id: 'knight_heavy', name: '기사단장의 중갑', type: 'ARMOR', slot: 'BODY', description: '기사단장이 입던 갑옷. (방어력 +45)', price: 50000, effectValue: 45 },
-    { id: 'commander_coat', name: '사령관의 코트', type: 'ARMOR', slot: 'BODY', description: '마법 저항력이 있습니다. (방어력 +60)', price: 100000, effectValue: 60 },
-    { id: 'dragon_scale', name: '용비늘 갑옷', type: 'ARMOR', slot: 'BODY', description: '뚫을 수 없는 절대 방어. (방어력 +150)', price: 500000, effectValue: 150 },
-
-    // Armor (Head)
-    { id: 'high_orc_helm', name: '하이오크의 투구', type: 'ARMOR', slot: 'HEAD', description: '위압적인 투구. (방어력 +20)', price: 35000, effectValue: 20 },
-
-    // Accessories
-    { id: 'ring_str', name: '힘의 반지', type: 'WEAPON', slot: 'ACCESSORY', description: '착용 시 힘이 솟습니다. (공격력 +10)', price: 20000, effectValue: 10 },
-    { id: 'neck_def', name: '수호의 목걸이', type: 'ARMOR', slot: 'ACCESSORY', description: '착용 시 보호막 생성. (방어력 +15)', price: 20000, effectValue: 15 },
-];
-
-const SHOP_ITEMS = SHOP_ITEMS_RAW.sort((a, b) => a.price - b.price);
-
-
-export const ActionPanel: React.FC<ActionPanelProps> = ({ 
-  player, 
-  addLog, 
-  updatePlayer,
-  onEnemyDefeated,
-  onPlayerDamage
-}) => {
+export const ActionPanel: React.FC<ActionPanelProps> = ({ player, addLog, updatePlayer, onEnemyDefeated, onPlayerDamage }) => {
   const [gameState, setGameState] = useState<GameState>('IDLE');
-  const [activeTab, setActiveTab] = useState<TabState>('STORY');
   const [currentEnemy, setCurrentEnemy] = useState<Enemy | null>(null);
-  const [lastDefeatedEnemy, setLastDefeatedEnemy] = useState<Enemy | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [activeStoryId, setActiveStoryId] = useState<number | null>(null);
-  const [extractionAttempted, setExtractionAttempted] = useState(false);
+  const [animState, setAnimState] = useState<CombatAnim>('NORMAL');
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [shopCategory, setShopCategory] = useState<ShopCategory>('ALL');
   
-  // Animation State
-  const [combatAnim, setCombatAnim] = useState<CombatAnimState>('IDLE');
+  // 웨이브 시스템 상태
+  const [currentWave, setCurrentWave] = useState(1);
+  const [maxWaves, setMaxWaves] = useState(5);
+  const [currentGateRank, setCurrentGateRank] = useState<Rank>(Rank.E);
 
-  // Combat Helpers
-  const calculatePlayerDamage = (multiplier: number = 1): { damage: number, isCrit: boolean } => {
-      // Base Dmg = Str * 2 + Agi * 1 + Companion Bonuses + Equipped Weapon Bonuses
-      const companionBonus = player.companions.reduce((acc, curr) => acc + curr.attackBonus, 0);
-      
-      // Calculate bonus from equipped items (WEAPON type items add attack, e.g. Swords, Rings)
-      const equipmentBonus = player.inventory
-        .filter(i => i.isEquipped && i.type === 'WEAPON')
-        .reduce((acc, curr) => acc + curr.effectValue, 0);
-      
-      const baseDmg = (player.stats.strength * 2) + (player.stats.agility) + companionBonus + equipmentBonus;
-      
-      const variance = Math.random() * 0.4 + 0.8;
-      const critChance = player.stats.sense * 0.01;
-      const isCrit = Math.random() < critChance;
-      
-      let damage = Math.floor(baseDmg * variance * multiplier);
-      if (isCrit) damage = Math.floor(damage * 1.5);
-      
-      return { damage, isCrit };
+  const filteredItems = useMemo(() => {
+    if (shopCategory === 'ALL') return SHOP_ITEMS;
+    return SHOP_ITEMS.filter(item => item.type === shopCategory);
+  }, [shopCategory]);
+
+  const startCombat = (rank: Rank) => {
+      const waveCount = Math.floor(Math.random() * 6) + 5; // 5~10 웨이브
+      setCurrentGateRank(rank);
+      setCurrentWave(1);
+      setMaxWaves(waveCount);
+      spawnEnemy(rank, 1);
+      setGameState('COMBAT');
+      addLog(`${rank}급 게이트에 진입했습니다. (총 ${waveCount}웨이브)`, 'system');
   };
 
-  // Dungeon Actions
-  const handleEnterDungeon = async (rank: Rank, theme?: string) => {
-    if (loading) return;
-    setLoading(true);
-    addLog(`${rank}급 게이트에 입장합니다...`, 'info');
-    
-    // Local scenario generation
-    const scenario = generateDungeonScenarioLocal(rank, theme);
-    addLog(scenario, 'system');
-    
-    setTimeout(async () => {
-        // Local enemy generation
-        const enemy = generateEnemyLocal(rank);
-        setCurrentEnemy(enemy);
-        setGameState('COMBAT');
-        setActiveStoryId(null);
-        setExtractionAttempted(false);
-        addLog(`[경고] ${enemy.name}(이)가 나타났습니다!`, 'danger');
-        setLoading(false);
-    }, 1500);
-  };
-
-  // Story Actions
-  const handleStartStory = async (storyId: number) => {
-      const story = STORIES[storyId];
-      if (player.level < story.requiredLevel) {
-          addLog(`레벨이 부족합니다. (필요 레벨: ${story.requiredLevel})`, 'danger');
-          return;
-      }
-
-      setLoading(true);
-      setActiveStoryId(storyId);
-      setExtractionAttempted(false);
-      addLog(`[메인 스토리] ${story.title} 시작...`, 'story');
-
-      // Static narration
-      addLog(`전설적인 몬스터, ${story.bossName}가 나타났습니다!`, 'system');
-
-      setTimeout(async () => {
-          const boss = generateEnemyLocal(story.bossRank, story.bossName);
-          boss.isBoss = true;
-          setCurrentEnemy(boss);
-          setGameState('COMBAT');
-          setLoading(false);
-      }, 2000);
-  };
-
-  const triggerAnimation = (type: CombatAnimState) => {
-      setCombatAnim(type);
-      setTimeout(() => setCombatAnim('IDLE'), 1500); // Increased for EXTRACTION
+  const spawnEnemy = (rank: Rank, wave: number) => {
+      const templates = ENEMIES_POOL[rank];
+      const template = templates[Math.floor(Math.random() * templates.length)];
+      
+      // 웨이브에 따른 적 강화
+      const powerScale = 1 + (wave - 1) * 0.15;
+      const isBossWave = wave === maxWaves;
+      
+      setCurrentEnemy({
+          ...template,
+          hp: Math.floor(template.hp * powerScale),
+          maxHp: Math.floor(template.maxHp * powerScale),
+          attack: Math.floor(template.attack * powerScale),
+          name: isBossWave ? `[BOSS] ${template.name}` : `${template.name} (W.${wave})`
+      });
+      addLog(`웨이브 ${wave}: ${template.name}(이)가 나타났습니다.`, 'combat');
   };
 
   const handleAttack = () => {
     if (!currentEnemy) return;
     
-    setCombatAnim('ATTACK');
-    setTimeout(() => setCombatAnim('IDLE'), 200);
-
-    const { damage, isCrit } = calculatePlayerDamage(1);
+    // 공격력 계산 (스탯 + 군단 보너스 + 장비)
+    const critChance = Math.min(0.5, player.stats.sense * 0.01);
+    const isCrit = Math.random() < critChance;
+    const baseDmg = (player.stats.strength * 6) + (player.stats.agility * 3);
+    const shadowBonus = player.companions.reduce((sum, c) => sum + (c.attackBonus || 0), 0);
+    const weaponBonus = player.inventory.filter(i => i.isEquipped && i.type === 'WEAPON').reduce((sum, i) => sum + (i.effectValue || 0), 0);
     
-    if (isCrit) addLog(`[치명타!] 급소를 정확히 가격했습니다!`, 'danger');
-    
-    const newEnemyHp = currentEnemy.hp - damage;
-    setCurrentEnemy({ ...currentEnemy, hp: newEnemyHp });
-    
-    // Companion Flavor Text
-    if (player.companions.length > 0 && Math.random() > 0.7) {
-        const comp = player.companions[Math.floor(Math.random() * player.companions.length)];
-        addLog(`${comp.name}(이)가 함께 공격합니다!`, 'info');
-    }
+    let totalDmg = Math.floor((baseDmg + shadowBonus + weaponBonus) * (0.8 + Math.random() * 0.4));
+    if (isCrit) totalDmg = Math.floor(totalDmg * 2.5);
 
-    addLog(`${currentEnemy.name}에게 ${damage}의 피해를 입혔습니다.`, 'combat');
+    const newHp = Math.max(0, currentEnemy.hp - totalDmg);
+    setCurrentEnemy({ ...currentEnemy, hp: newHp });
+    addLog(`${currentEnemy.name}에게 ${totalDmg} 피해! ${isCrit ? '(치명타!)' : ''}`, isCrit ? 'danger' : 'combat');
 
-    if (newEnemyHp <= 0) {
-        handleVictory();
+    if (newHp <= 0) {
+        if (currentWave < maxWaves) {
+            // 다음 웨이브
+            const nextWave = currentWave + 1;
+            setCurrentWave(nextWave);
+            setTimeout(() => spawnEnemy(currentGateRank, nextWave), 600);
+            addLog(`웨이브 클리어! 체력을 일부 회복합니다.`, 'gain');
+            updatePlayer({ hp: Math.min(player.maxHp, player.hp + Math.floor(player.maxHp * 0.1)) });
+        } else {
+            handleVictory();
+        }
     } else {
-        setTimeout(handleEnemyTurn, 800);
+        setTimeout(enemyTurn, 300);
     }
   };
 
-  const handleSkillUse = (skill: Skill) => {
-      if (!currentEnemy) return;
-      if (player.mp < skill.mpCost) {
-          addLog("마력이 부족합니다!", 'danger');
-          return;
-      }
-
-      setCombatAnim('SKILL');
-      setTimeout(() => setCombatAnim('IDLE'), 500);
-
-      updatePlayer({ mp: player.mp - skill.mpCost });
-
-      if (skill.effect === 'heal') {
-          const healAmount = Math.floor(player.maxHp * 0.4);
-          updatePlayer({ hp: Math.min(player.maxHp, player.hp + healAmount) });
-          addLog(`[스킬] ${skill.name} 사용! 체력이 ${healAmount} 회복되었습니다.`, 'gain');
-          // Consumes turn
-          setTimeout(handleEnemyTurn, 800);
-          return;
-      }
-
-      if (skill.damageMult) {
-           const { damage, isCrit } = calculatePlayerDamage(skill.damageMult);
-           const newEnemyHp = currentEnemy.hp - damage;
-           setCurrentEnemy({ ...currentEnemy, hp: newEnemyHp });
-           addLog(`[스킬] ${skill.name}! ${damage}의 막대한 피해!`, 'danger');
-           
-           if (newEnemyHp <= 0) handleVictory();
-           else setTimeout(handleEnemyTurn, 800);
-           return;
-      }
-      
-      // Fallback for generic skills
-      addLog(`[스킬] ${skill.name} 발동!`, 'info');
-      setTimeout(handleEnemyTurn, 800);
-  };
-
-  const handleEnemyTurn = () => {
+  const enemyTurn = () => {
       if (!currentEnemy || gameState !== 'COMBAT') return;
-
-      // Defense Calculation (Vit + Equipped Armor)
-      // ARMOR type items add Defense (Armor, Helm, Necklace)
-      const armorBonus = player.inventory
-        .filter(i => i.isEquipped && i.type === 'ARMOR')
-        .reduce((acc, curr) => acc + curr.effectValue, 0);
-
-      const defense = (player.stats.vitality * 0.8) + armorBonus;
-
-      // Agility gives chance to dodge
-      const dodgeChance = Math.min(0.5, player.stats.agility * 0.005); 
+      setAnimState('HIT');
       
-      if (Math.random() < dodgeChance) {
-          addLog(`빠른 몸놀림으로 ${currentEnemy.name}의 공격을 회피했습니다!`, 'gain');
-          return;
-      }
-
-      setCombatAnim('HIT');
-      setTimeout(() => setCombatAnim('IDLE'), 500);
-
-      const rawDmg = currentEnemy.attack;
-      const finalDmg = Math.max(1, Math.floor(rawDmg - defense));
+      const armorBonus = player.inventory.filter(i => i.isEquipped && i.type === 'ARMOR').reduce((sum, i) => sum + (i.effectValue || 0), 0);
+      const defense = (player.stats.vitality * 3) + armorBonus;
+      const dmg = Math.max(5, currentEnemy.attack - defense);
       
-      addLog(`${currentEnemy.name}의 공격! ${finalDmg}의 피해를 입었습니다. ${armorBonus > 0 ? `(방어구 효과 -${armorBonus})` : ''}`, 'danger');
-      onPlayerDamage(finalDmg);
+      onPlayerDamage(dmg);
+      addLog(`${currentEnemy.name}의 공격! ${dmg} 피해를 입었습니다.`, 'danger');
+      setTimeout(() => setAnimState('NORMAL'), 150);
   };
 
   const handleVictory = () => {
       if (!currentEnemy) return;
-      
-      addLog(`${currentEnemy.name}을(를) 처치했습니다!`, 'gain');
-      
-      let expBase = 0;
-      let goldBase = 0;
-      
-      switch(currentEnemy.rank) {
-          case Rank.E: expBase = 20; goldBase = 100; break;
-          case Rank.D: expBase = 50; goldBase = 300; break;
-          case Rank.C: expBase = 150; goldBase = 1000; break;
-          case Rank.B: expBase = 500; goldBase = 5000; break;
-          case Rank.A: expBase = 2000; goldBase = 20000; break;
-          case Rank.S: expBase = 10000; goldBase = 100000; break;
-      }
-
-      if (currentEnemy.isBoss) {
-          expBase *= 3;
-          goldBase *= 5;
-          addLog("보스 처치 보너스 획득!", 'gain');
-      }
-      
-      // Award EXP/Gold
-      onEnemyDefeated(currentEnemy.rank, expBase, goldBase, activeStoryId !== null ? activeStoryId : undefined);
-
-      // Store enemy for extraction logic
-      setLastDefeatedEnemy(currentEnemy);
-      setCurrentEnemy(null); // Clear active combat enemy
-      setGameState('VICTORY'); // Go to victory screen instead of IDLE
+      const exp = Math.floor(currentEnemy.maxHp * 1.2);
+      const gold = Math.floor(currentEnemy.maxHp * 4);
+      onEnemyDefeated(currentGateRank, exp, gold);
+      setGameState('VICTORY');
+      addLog(`게이트 공략 성공! 모든 적을 소탕했습니다.`, 'system');
   };
 
   const handleExtraction = () => {
-      if (!lastDefeatedEnemy) return;
-      if (extractionAttempted) {
-          addLog("이미 추출을 시도했습니다.", 'info');
-          return;
-      }
-
-      const skill = player.skills.find(s => s.id === 'shadow_extract');
-      if (!skill) return;
-
-      if (player.mp < skill.mpCost) {
-          addLog("마력이 부족하여 추출할 수 없습니다.", 'danger');
-          return;
-      }
-
-      setExtractionAttempted(true);
-      updatePlayer({ mp: player.mp - skill.mpCost });
-      addLog("그림자 추출을 시도합니다...", 'system');
-      addLog(`"일어나라..."`, 'system');
+      if (!currentEnemy || isExtracting) return;
+      if (player.mp < 50) { addLog("추출을 위한 마력이 부족합니다.", 'info'); return; }
       
-      setCombatAnim('EXTRACTION');
+      setIsExtracting(true);
+      setAnimState('EXTRACTION');
+      updatePlayer({ mp: player.mp - 50 });
+      addLog(`"일어나라."`, 'system');
 
-      // Chance calculation based on Int
-      const successChance = 40 + (player.stats.intelligence * 0.5);
-      const roll = Math.random() * 100;
-      
       setTimeout(() => {
-          setCombatAnim('IDLE');
-          if (roll < successChance) {
-              const enemyName = lastDefeatedEnemy.name;
-              
-              // New Expanded Logic for Shadow Types
-              let shadowName = `그림자 ${enemyName}`;
-              let role = "보병";
-              let bonusMult = 0.8; 
+          const successChance = 0.3 + (player.stats.intelligence * 0.015);
+          const success = Math.random() < successChance;
 
-              if (lastDefeatedEnemy.isBoss) {
-                  shadowName = `[장군] ${enemyName}`;
-                  role = "장군";
-                  bonusMult = 1.5;
-              } else if (/마법|주술|화염|얼음|메이지|위자드/.test(enemyName)) {
-                  shadowName = enemyName.replace(/마법사|주술사|화염|얼음/, '').trim() + " (메이지)";
-                  role = "마법사";
-                  bonusMult = 1.3;
-              } else if (/골렘|방패|거인|아이언|가디언/.test(enemyName)) {
-                  shadowName = enemyName.replace(/골렘/, '').trim() + " (가디언)";
-                  role = "탱커";
-                  bonusMult = 0.5; // High defense logic usually, but low attack contribution
-              } else if (/암살|늑대|단검|스파이더|그림자/.test(enemyName)) {
-                  shadowName = enemyName.replace(/암살자/, '').trim() + " (어쌔신)";
-                  role = "암살자";
-                  bonusMult = 1.2;
-              } else if (/기사|나이트|오크|리자드|검사/.test(enemyName)) {
-                  shadowName = enemyName.replace(/기사/, '').trim() + " (나이트)";
-                  role = "전사";
-                  bonusMult = 1.0;
-              } else if (/궁수|아처|레인저|사수/.test(enemyName)) {
-                  shadowName = enemyName.replace(/궁수|아처|사수/, '').trim() + " (레인저)";
-                  role = "궁수";
-                  bonusMult = 1.2;
-              } else if (/사제|프리스트|힐러/.test(enemyName)) {
-                  shadowName = enemyName.replace(/사제|프리스트|힐러/, '').trim() + " (매지션)";
-                  role = "힐러";
-                  bonusMult = 0.6;
-              }
-
-              const newCompanion: Companion = {
-                  id: `shadow_${Date.now()}`,
-                  name: shadowName,
-                  rank: lastDefeatedEnemy.rank,
-                  description: `${lastDefeatedEnemy.name}의 그림자입니다.`,
+          if (success) {
+              const newShadow: Companion = {
+                  id: Date.now().toString(),
+                  name: `그림자 ${currentEnemy.name.replace('[BOSS] ', '').split(' ')[0]}`,
+                  rank: currentGateRank,
+                  description: `군주의 의지에 귀속된 병사`,
                   type: 'SHADOW',
-                  role: role,
-                  attackBonus: Math.max(1, Math.floor(lastDefeatedEnemy.attack * bonusMult))
+                  attackBonus: Math.floor(currentEnemy.attack * 0.35),
+                  role: currentEnemy.isBoss ? '기사' : '보병'
               };
-
-              const updatedCompanions = [...player.companions, newCompanion];
-              updatePlayer({ companions: updatedCompanions });
-              addLog(`성공했습니다! ${newCompanion.name}(이)가 그림자 군단에 합류합니다.`, 'gain');
+              updatePlayer({ companions: [...player.companions, newShadow] });
+              addLog(`그림자 추출에 성공했습니다: ${newShadow.name}`, 'gain');
           } else {
-               addLog("추출에 실패했습니다. 영혼이 소멸되었습니다.", 'info');
+              addLog("그림자가 저항하여 추출에 실패했습니다.", 'info');
           }
+          setIsExtracting(false);
+          setAnimState('NORMAL');
+          setGameState('IDLE');
       }, 2000);
   };
 
-  const handleEndVictory = () => {
-      setGameState('IDLE');
-      setLastDefeatedEnemy(null);
-      setExtractionAttempted(false);
-      setActiveStoryId(null);
-  };
-
-  const handleTraining = () => {
-      if (player.hp < 10) { addLog("체력이 부족합니다.", 'danger'); return; }
-      const gain = 5 + Math.floor(player.level);
-      addLog("일일 퀘스트 수행 중...", 'info');
-      updatePlayer({ hp: player.hp - 5, currentExp: player.currentExp + gain });
-      addLog(`근력이 조금 상승한 기분입니다. (+${gain} EXP)`, 'gain');
-  };
-
-  const handleRest = () => {
-      const hRec = Math.floor(player.maxHp * 0.5);
-      const mRec = Math.floor(player.maxMp * 0.5);
-      updatePlayer({ hp: Math.min(player.maxHp, player.hp + hRec), mp: Math.min(player.maxMp, player.mp + mRec) });
-      addLog("휴식을 취했습니다.", 'gain');
-  };
-
-  const handleBuyItem = (item: Item) => {
-      if (player.gold < item.price) {
-          addLog("골드가 부족합니다.", 'danger');
-          return;
-      }
-
-      const newInventory = [...player.inventory];
-      
-      if (item.type === 'CONSUMABLE') {
-          const existingItem = newInventory.find(i => i.id === item.id);
-          if (existingItem) {
-              existingItem.count = (existingItem.count || 0) + 1;
-          } else {
-              newInventory.push({ ...item, count: 1 });
-          }
-      } else {
-          // Equipment - Add as unique item with UID and default isEquipped: false
-          newInventory.push({ 
-            ...item, 
-            uid: Date.now().toString() + Math.random().toString().slice(2),
-            isEquipped: false 
-          });
-      }
-
-      updatePlayer({ 
-          gold: player.gold - item.price,
-          inventory: newInventory
-      });
-      addLog(`${item.name}을(를) 구매했습니다.`, 'gain');
-  };
-  
-  const handleUseItem = (itemId: string) => {
-      const itemIndex = player.inventory.findIndex(i => i.id === itemId);
-      if (itemIndex === -1) return;
-      
-      const item = player.inventory[itemIndex];
-      if (item.type !== 'CONSUMABLE') return;
-      
-      let used = false;
-      if (item.id === 'elixir') {
-          updatePlayer({ hp: player.maxHp, mp: player.maxMp });
-          addLog(`${item.name} 사용. 모든 상태가 회복되었습니다!`, 'gain');
-          used = true;
-      } else if (item.id.includes('hp')) {
-          if (player.hp >= player.maxHp) { addLog("체력이 이미 가득 찼습니다.", 'info'); return; }
-          updatePlayer({ hp: Math.min(player.maxHp, player.hp + item.effectValue) });
-          addLog(`${item.name} 사용. 체력 ${item.effectValue} 회복.`, 'gain');
-          used = true;
-      } else if (item.id.includes('mp')) {
-          if (player.mp >= player.maxMp) { addLog("마력이 이미 가득 찼습니다.", 'info'); return; }
-          updatePlayer({ mp: Math.min(player.maxMp, player.mp + item.effectValue) });
-          addLog(`${item.name} 사용. 마력 ${item.effectValue} 회복.`, 'gain');
-          used = true;
-      }
-      
-      if (used) {
-          const newInventory = [...player.inventory];
-          if ((item.count || 1) > 1) {
-              newInventory[itemIndex].count = (item.count || 1) - 1;
-          } else {
-              newInventory.splice(itemIndex, 1);
-          }
-          updatePlayer({ inventory: newInventory });
-      }
-  };
-
-  const handleGacha = () => {
-    const GACHA_COST = 400;
-    
-    // Check for Free Ticket
-    const ticketIndex = player.inventory.findIndex(i => i.id === 'gacha_ticket');
-    const hasTicket = ticketIndex !== -1 && (player.inventory[ticketIndex].count || 0) > 0;
-    
-    if (!hasTicket && player.gold < GACHA_COST) {
-        addLog("골드나 티켓이 부족합니다.", 'danger');
-        return;
-    }
-
-    // Prepare state updates
-    let currentInventory = [...player.inventory];
-    let currentGold = player.gold;
-
-    if (hasTicket) {
-         if (ticketIndex !== -1) {
-             if ((currentInventory[ticketIndex].count || 1) > 1) {
-                currentInventory[ticketIndex].count = (currentInventory[ticketIndex].count || 1) - 1;
-            } else {
-                currentInventory.splice(ticketIndex, 1);
-            }
-            addLog("무료 뽑기권을 사용했습니다!", 'info');
-        }
-    } else {
-        currentGold -= GACHA_COST;
-        addLog(`${GACHA_COST}G를 사용하여 상자를 엽니다...`, 'info');
-    }
-
-    // Roll Logic
-    const roll = Math.random() * 100;
-    let rank: Rank;
-    
-    if (roll < 1) rank = Rank.S; // 1%
-    else if (roll < 5) rank = Rank.A; // 4%
-    else if (roll < 20) rank = Rank.B; // 15%
-    else if (roll < 50) rank = Rank.C; // 30%
-    else rank = Rank.D; // 50%
-
-    // Filter items by approximate value matching rank
-    const possibleItems = SHOP_ITEMS.filter(item => {
-        if (rank === Rank.S) return item.price >= 500000;
-        if (rank === Rank.A) return item.price >= 50000 && item.price < 500000;
-        if (rank === Rank.B) return item.price >= 10000 && item.price < 50000;
-        if (rank === Rank.C) return item.price >= 3000 && item.price < 10000;
-        return item.price < 3000;
-    });
-
-    if (possibleItems.length === 0) {
-        addLog("상자가 비어있었습니다... (꽝)", 'info');
-        updatePlayer({ inventory: currentInventory, gold: currentGold });
-        return;
-    }
-
-    const reward = possibleItems[Math.floor(Math.random() * possibleItems.length)];
-    
-    // Add item
-    if (reward.type === 'CONSUMABLE') {
-        const existingIndex = currentInventory.findIndex(i => i.id === reward.id);
-        if (existingIndex !== -1) {
-            currentInventory[existingIndex] = { 
-                ...currentInventory[existingIndex], 
-                count: (currentInventory[existingIndex].count || 0) + 1 
-            };
-        } else {
-            currentInventory.push({ ...reward, count: 1 });
-        }
-    } else {
-         currentInventory.push({ 
-            ...reward, 
-            uid: Date.now().toString() + Math.random().toString().slice(2),
-            isEquipped: false 
-          });
-    }
-
-    updatePlayer({ inventory: currentInventory, gold: currentGold });
-    addLog(`[${rank}급] ${reward.name} 획득!`, 'gain');
-  };
-
   return (
-    <div className="flex-1 flex flex-col gap-4">
-        {/* Tabs */}
-        <div className="flex border-b border-system-blue/30">
-            <button 
-                onClick={() => setActiveTab('STORY')} 
-                className={`flex-1 py-3 text-center font-bold tracking-widest transition-colors ${activeTab === 'STORY' ? 'bg-system-blue/20 text-system-blue border-b-2 border-system-blue' : 'text-gray-500 hover:text-gray-300'}`}
-            >
-                STORY
-            </button>
-            <button 
-                onClick={() => setActiveTab('DUNGEON')} 
-                className={`flex-1 py-3 text-center font-bold tracking-widest transition-colors ${activeTab === 'DUNGEON' ? 'bg-system-blue/20 text-system-blue border-b-2 border-system-blue' : 'text-gray-500 hover:text-gray-300'}`}
-            >
-                DUNGEON
-            </button>
-            <button 
-                onClick={() => setActiveTab('SHOP')} 
-                className={`flex-1 py-3 text-center font-bold tracking-widest transition-colors ${activeTab === 'SHOP' ? 'bg-system-blue/20 text-system-blue border-b-2 border-system-blue' : 'text-gray-500 hover:text-gray-300'}`}
-            >
-                SHOP
-            </button>
-        </div>
-
-        {/* Content Area */}
-        <div className="flex-1 bg-black/40 border border-system-blue/30 rounded-lg p-4 relative overflow-hidden min-h-[400px]">
-            {/* Background grid */}
-            <div className="absolute inset-0 bg-[linear-gradient(rgba(0,168,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,168,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
-
-            {gameState === 'COMBAT' && currentEnemy ? (
-                <div className="relative z-10 h-full flex flex-col items-center justify-between animate-in fade-in zoom-in duration-300">
-                    {/* Enemy Status */}
-                    <div className="w-full text-center">
-                        <div className={`text-sm tracking-widest mb-1 ${currentEnemy.isBoss ? 'text-red-500 font-bold' : 'text-gray-400'}`}>
-                            {currentEnemy.isBoss ? '⚠️ WARNING: BOSS ⚠️' : `ENEMY: ${currentEnemy.rank}-RANK`}
-                        </div>
-                        <h2 className="text-3xl font-bold text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)] mb-2">{currentEnemy.name}</h2>
-                        
-                        <div className="w-full max-w-md mx-auto mb-4">
-                             <div className="flex justify-between text-xs text-red-400 mb-1 font-bold">
-                                <span>HP</span>
-                                <span>{currentEnemy.hp} / {currentEnemy.maxHp}</span>
-                             </div>
-                             <div className="h-4 bg-gray-900 border border-red-900/50 rounded-full overflow-hidden relative">
-                                <div 
-                                    className="h-full bg-red-600 transition-all duration-300 shadow-[0_0_10px_red]" 
-                                    style={{ width: `${(currentEnemy.hp / currentEnemy.maxHp) * 100}%` }}
-                                />
-                             </div>
-                        </div>
-                        <p className="text-gray-400 text-sm italic">"{currentEnemy.description}"</p>
-                    </div>
-
-                    {/* Combat Visualizer (Simple) */}
-                    <div className="flex-1 flex items-center justify-center my-4 relative w-full">
-                        <div className={`text-9xl transition-transform duration-100 ${combatAnim === 'HIT' ? 'translate-x-2 text-red-600' : 'text-gray-700'}`}>
-                           {currentEnemy.isBoss ? '🐲' : '👹'}
-                        </div>
-                        
-                        {/* Animation Overlays */}
-                        {combatAnim === 'ATTACK' && (
-                            <div className="absolute text-6xl animate-ping text-white font-bold">💥</div>
-                        )}
-                        {combatAnim === 'SKILL' && (
-                            <div className="absolute text-6xl animate-spin text-blue-500 font-bold">🌀</div>
-                        )}
-                         {combatAnim === 'EXTRACTION' && (
-                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-20">
-                                <div className="text-system-blue text-2xl font-bold animate-pulse tracking-widest">
-                                    RISE...
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Controls */}
-                    <div className="w-full grid grid-cols-2 gap-2 max-w-lg mx-auto">
+    <div className="flex-1 bg-system-panel/50 border border-system-blue/30 rounded-lg p-6 backdrop-blur-sm flex flex-col min-h-[450px]">
+        {gameState === 'IDLE' && (
+            <div className="flex-1 flex flex-col justify-center items-center gap-8">
+                <div className="text-center">
+                    <h3 className="text-xl font-black text-system-blue tracking-[0.4em] mb-2">GATE SELECTION</h3>
+                    <p className="text-[10px] text-gray-500 font-bold">공략할 게이트 등급을 선택하십시오</p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-2xl">
+                    {Object.values(Rank).map(rank => (
                         <button 
-                            onClick={handleAttack}
-                            className="bg-gray-800 hover:bg-gray-700 border border-gray-600 p-4 rounded text-white font-bold transition-all hover:scale-[1.02] active:scale-95"
+                            key={rank} 
+                            onClick={() => startCombat(rank)} 
+                            className="group relative p-5 bg-black/60 border border-gray-800 rounded-lg hover:border-system-blue transition-all overflow-hidden hover:-translate-y-1"
                         >
-                            ⚔️ 공격 (Attack)
+                            <div className="absolute inset-0 bg-system-blue/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <span className={`text-3xl font-black italic block mb-1 ${getRankColor(rank)}`}>{rank}</span>
+                            <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">GATE ENTRANCE</span>
                         </button>
-                        
-                        {player.skills.map(skill => (
-                            <button 
-                                key={skill.id}
-                                onClick={() => handleSkillUse(skill)}
-                                className="bg-blue-900/30 hover:bg-blue-800/50 border border-blue-500/50 p-4 rounded text-blue-200 font-bold transition-all hover:scale-[1.02] active:scale-95 flex flex-col items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                                disabled={player.mp < skill.mpCost || (skill.effect === 'summon')} 
-                            >
-                                <span>⚡ {skill.name}</span>
-                                <span className="text-xs text-blue-400 font-normal">{skill.mpCost} MP</span>
-                            </button>
-                        ))}
+                    ))}
+                </div>
+                <button onClick={() => setGameState('SHOP')} className="px-12 py-3 border border-yellow-500/50 text-yellow-500 font-bold text-xs tracking-[0.3em] hover:bg-yellow-500/20 transition-all rounded-full shadow-[0_0_15px_rgba(234,179,8,0.2)]">시스템 상점 입장</button>
+            </div>
+        )}
+
+        {gameState === 'COMBAT' && currentEnemy && (
+            <div className={`flex-1 flex flex-col ${animState === 'HIT' ? 'animate-glitch' : ''}`}>
+                <div className="flex justify-between items-center mb-6">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[9px] font-black text-system-blue border border-system-blue/50 px-2 py-0.5 rounded">WAVE {currentWave}/{maxWaves}</span>
+                            {currentEnemy.isBoss && <span className="text-[9px] font-black text-red-500 animate-pulse">[BOSS]</span>}
+                        </div>
+                        <h2 className="text-2xl font-black text-white italic">{currentEnemy.name}</h2>
+                    </div>
+                    <span className={`text-4xl font-black italic ${getRankColor(currentGateRank)}`}>{currentGateRank}</span>
+                </div>
+
+                {/* 웨이브 진행 바 */}
+                <div className="w-full h-1 bg-gray-900 rounded-full mb-10 overflow-hidden">
+                    <div className="h-full bg-system-blue transition-all duration-500" style={{ width: `${(currentWave / maxWaves) * 100}%` }}></div>
+                </div>
+
+                <div className="flex-1 flex flex-col justify-center items-center gap-12">
+                    <div className="w-full max-w-md relative">
+                        <div className="flex justify-between text-[10px] mb-2 font-mono">
+                            <span className="text-red-500 font-bold">ENEMY HP</span>
+                            <span className="text-white">{currentEnemy.hp.toLocaleString()} / {currentEnemy.maxHp.toLocaleString()}</span>
+                        </div>
+                        <div className="h-5 bg-gray-900 border border-gray-800 rounded-lg overflow-hidden relative">
+                            <div className="h-full bg-gradient-to-r from-red-900 via-red-600 to-red-400 transition-all duration-300" style={{ width: `${(currentEnemy.hp / currentEnemy.maxHp) * 100}%` }}></div>
+                            <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.05)_50%,transparent_75%)] bg-[length:50px_50px] animate-scanline"></div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
+                        <button onClick={handleAttack} className="group relative py-5 bg-red-600 hover:bg-red-500 text-black font-black italic tracking-widest rounded shadow-lg transition-all active:scale-95 overflow-hidden">
+                            <span className="relative z-10">⚔️ 일반 공격</span>
+                            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform"></div>
+                        </button>
+                        <button className="py-5 bg-gray-800 text-gray-500 font-black italic tracking-widest rounded cursor-not-allowed border border-gray-700">⚡ 특수 스킬 (잠김)</button>
                     </div>
                 </div>
-            ) : gameState === 'VICTORY' ? (
-                 <div className="h-full flex flex-col items-center justify-center animate-in zoom-in duration-300">
-                    <h2 className="text-4xl font-bold text-yellow-400 mb-4 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]">VICTORY</h2>
-                    <p className="text-gray-300 mb-8">적을 성공적으로 제압했습니다.</p>
-                    
-                    <div className="flex flex-col gap-3 w-full max-w-xs">
-                        {/* Shadow Extraction Button */}
-                        {lastDefeatedEnemy && player.skills.some(s => s.id === 'shadow_extract') && !extractionAttempted && (
-                            <button 
-                                onClick={handleExtraction}
-                                className="w-full py-3 bg-black border border-system-blue text-system-blue font-bold rounded hover:bg-system-blue hover:text-black transition-all shadow-[0_0_15px_rgba(0,168,255,0.3)] animate-pulse"
-                            >
-                                ✋ 그림자 추출 (Shadow Extraction)
-                            </button>
-                        )}
-                        
+            </div>
+        )}
+
+        {gameState === 'VICTORY' && (
+            <div className="flex-1 flex flex-col items-center justify-center text-center animate-in fade-in zoom-in duration-500">
+                <div className="w-20 h-20 bg-system-blue/10 border-2 border-system-blue rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(0,168,255,0.4)]">
+                    <span className="text-3xl">🏆</span>
+                </div>
+                <h2 className="text-4xl font-black text-white italic tracking-tighter mb-2">DUNGEON CLEAR</h2>
+                <p className="text-[11px] text-gray-500 mb-10 tracking-widest font-bold">시스템이 공략 성공을 확인했습니다</p>
+                
+                <div className="flex flex-col gap-4 w-full max-w-xs">
+                    {player.job !== PlayerClass.NONE && (
                         <button 
-                            onClick={handleEndVictory}
-                            className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white rounded font-bold"
+                            onClick={handleExtraction}
+                            disabled={isExtracting}
+                            className={`py-4 bg-purple-900 border-2 border-purple-500 text-white font-black italic tracking-[0.5em] rounded shadow-[0_0_20px_rgba(168,85,247,0.4)] transition-all ${isExtracting ? 'animate-pulse opacity-50' : 'hover:bg-purple-800'}`}
                         >
-                            돌아가기
+                            {isExtracting ? '추출 진행 중...' : '일어나라'}
                         </button>
-                    </div>
+                    )}
+                    <button onClick={() => setGameState('IDLE')} className="py-3 text-[10px] text-gray-500 font-black hover:text-white transition-colors underline underline-offset-8 tracking-widest">GATE EXIT</button>
                 </div>
-            ) : (
-                /* Non-Combat Views */
-                <div className="h-full overflow-y-auto custom-scrollbar relative z-10">
-                    {activeTab === 'STORY' && (
-                        <div className="space-y-4">
-                            <h3 className="text-xl font-bold text-white border-b border-gray-700 pb-2 mb-4">MAIN SCENARIO</h3>
-                            {STORIES.map((story) => {
-                                const isLocked = player.level < story.requiredLevel;
-                                const isCompleted = player.storyStage > story.id;
-                                const isCurrent = player.storyStage === story.id;
+            </div>
+        )}
 
-                                return (
-                                    <div 
-                                        key={story.id} 
-                                        className={`p-4 border rounded-lg transition-all relative overflow-hidden
-                                            ${isCompleted ? 'bg-gray-900/50 border-gray-800 opacity-50' : ''}
-                                            ${isCurrent ? 'bg-blue-900/20 border-system-blue shadow-[0_0_10px_rgba(0,168,255,0.1)]' : ''}
-                                            ${isLocked ? 'bg-gray-900 border-gray-800 opacity-70 cursor-not-allowed' : ''}
-                                        `}
-                                    >
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <span className={`text-xs font-bold px-2 py-0.5 rounded mr-2 ${isCurrent ? 'bg-system-blue text-black' : 'bg-gray-700 text-gray-400'}`}>
-                                                    {isCompleted ? 'CLEARED' : isCurrent ? 'CURRENT' : 'LOCKED'}
-                                                </span>
-                                                <h4 className="inline text-lg font-bold text-gray-200">{story.title}</h4>
-                                            </div>
-                                            <span className={`text-sm font-mono ${Rank[story.bossRank] === 'S' ? 'text-yellow-500' : 'text-red-400'}`}>
-                                                Boss: {story.bossRank}급
-                                            </span>
-                                        </div>
-                                        <p className="text-gray-400 text-sm mb-4">{story.description}</p>
-                                        
-                                        {!isCompleted && !isLocked && (
-                                             <button 
-                                                onClick={() => handleStartStory(story.id)}
-                                                className="w-full py-2 bg-system-blue/10 hover:bg-system-blue hover:text-black border border-system-blue/50 text-system-blue rounded transition-all text-sm font-bold"
-                                             >
-                                                 입장하기 (Lv.{story.requiredLevel}+)
-                                             </button>
-                                        )}
-                                        {isLocked && (
-                                            <div className="text-xs text-red-500 mt-2">
-                                                🔒 필요 레벨: {story.requiredLevel}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {activeTab === 'DUNGEON' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="md:col-span-2 text-gray-400 text-sm mb-2 p-2 bg-blue-900/10 border border-blue-900/30 rounded">
-                                ※ 인스턴스 던전에서는 경험치와 골드를 획득할 수 있습니다.
-                            </div>
-                            
-                            {(['E', 'D', 'C', 'B', 'A', 'S'] as Rank[]).map((rank) => (
-                                <button
-                                    key={rank}
-                                    onClick={() => handleEnterDungeon(rank)}
-                                    disabled={loading}
-                                    className={`p-6 border rounded-lg flex flex-col items-center justify-center gap-2 transition-all group
-                                        ${rank === 'S' ? 'bg-yellow-900/10 border-yellow-500/30 hover:bg-yellow-900/30 hover:border-yellow-500' : ''}
-                                        ${rank === 'A' ? 'bg-red-900/10 border-red-500/30 hover:bg-red-900/30 hover:border-red-500' : ''}
-                                        ${['B','C'].includes(rank) ? 'bg-blue-900/10 border-blue-500/30 hover:bg-blue-900/30 hover:border-blue-500' : ''}
-                                        ${['D','E'].includes(rank) ? 'bg-gray-900/30 border-gray-700 hover:bg-gray-800 hover:border-gray-500' : ''}
-                                    `}
-                                >
-                                    <span className={`text-4xl font-bold ${rank === 'S' ? 'text-yellow-500' : rank === 'A' ? 'text-red-500' : 'text-gray-300'}`}>
-                                        {rank}
-                                    </span>
-                                    <span className="text-xs text-gray-500 group-hover:text-white transition-colors">GATE</span>
-                                </button>
-                            ))}
-
-                            <div className="md:col-span-2 mt-4 grid grid-cols-2 gap-4">
-                                <button 
-                                    onClick={handleTraining}
-                                    className="p-4 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 text-gray-300 hover:text-white transition-all flex flex-col items-center gap-1"
-                                >
-                                    <span>🏃 일일 퀘스트 (Training)</span>
-                                    <span className="text-xs text-gray-500">HP -5 / 소량의 EXP 획득</span>
-                                </button>
-                                <button 
-                                    onClick={handleRest}
-                                    className="p-4 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 text-gray-300 hover:text-white transition-all flex flex-col items-center gap-1"
-                                >
-                                    <span>💤 휴식 (Rest)</span>
-                                    <span className="text-xs text-gray-500">HP/MP 50% 회복</span>
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'SHOP' && (
-                        <div className="space-y-6">
-                            {/* Gacha Section */}
-                            <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 p-4 rounded-lg border border-purple-500/30">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h3 className="text-purple-400 font-bold">📦 랜덤 박스 (Gacha)</h3>
-                                    <span className="text-xs text-gray-400">1회 400G</span>
-                                </div>
-                                <p className="text-xs text-gray-500 mb-4">장비, 소비 아이템을 무작위로 획득합니다.</p>
-                                <button 
-                                    onClick={handleGacha}
-                                    className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded shadow-[0_0_15px_rgba(147,51,234,0.3)] transition-all active:scale-95"
-                                >
-                                    박스 열기
-                                </button>
-                            </div>
-
-                            {/* Inventory / Use Items */}
-                             <div>
-                                <h3 className="text-white font-bold border-b border-gray-700 pb-2 mb-2">MY INVENTORY</h3>
-                                <div className="grid grid-cols-4 gap-2">
-                                    {player.inventory.filter(i => i.type === 'CONSUMABLE').length === 0 && (
-                                        <div className="col-span-4 text-gray-500 text-xs text-center py-4">소비 아이템이 없습니다.</div>
-                                    )}
-                                    {Array.from(new Set(player.inventory.filter(i => i.type === 'CONSUMABLE').map(i => i.id))).map(itemId => {
-                                        const item = player.inventory.find(i => i.id === itemId);
-                                        if(!item) return null;
-                                        return (
-                                            <button 
-                                                key={item.id}
-                                                onClick={() => handleUseItem(item.id)}
-                                                className="bg-gray-800 hover:bg-gray-700 border border-gray-600 p-2 rounded flex flex-col items-center gap-1 group relative"
-                                                title={item.description}
-                                            >
-                                                <span className="text-xs text-gray-300 truncate w-full text-center">{item.name}</span>
-                                                <span className="text-[10px] text-gray-500">x{item.count}</span>
-                                            </button>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Shop List */}
-                            <div>
-                                <h3 className="text-white font-bold border-b border-gray-700 pb-2 mb-2">ITEM SHOP</h3>
-                                <div className="space-y-2">
-                                    {SHOP_ITEMS.map((item) => (
-                                        <div key={item.id} className="flex justify-between items-center bg-black/30 p-3 rounded border border-gray-800 hover:border-gray-600 transition-colors">
-                                            <div>
-                                                <div className="font-bold text-gray-300 text-sm">{item.name}</div>
-                                                <div className="text-xs text-gray-500">{item.description}</div>
-                                            </div>
-                                            <button 
-                                                onClick={() => handleBuyItem(item)}
-                                                disabled={player.gold < item.price}
-                                                className="px-3 py-1 bg-system-blue/10 hover:bg-system-blue/30 text-system-blue border border-system-blue/30 rounded text-xs transition-colors disabled:opacity-30 disabled:cursor-not-allowed min-w-[80px]"
-                                            >
-                                                {item.price} G
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
+        {gameState === 'SHOP' && (
+            <div className="flex-1 flex flex-col animate-in fade-in duration-300 overflow-hidden">
+                <div className="flex justify-between items-center mb-6 shrink-0">
+                    <h2 className="text-2xl font-black text-yellow-500 italic tracking-widest">SYSTEM STORE</h2>
+                    <button onClick={() => setGameState('IDLE')} className="text-[11px] font-bold text-gray-500 hover:text-white transition-colors">BACK [ESC]</button>
                 </div>
-            )}
-        </div>
+
+                {/* 카테고리 필터 */}
+                <div className="flex gap-2 mb-4 shrink-0 overflow-x-auto pb-2 custom-scrollbar">
+                    {(['ALL', 'CONSUMABLE', 'WEAPON', 'ARMOR'] as ShopCategory[]).map(cat => (
+                        <button 
+                            key={cat} 
+                            onClick={() => setShopCategory(cat)}
+                            className={`px-4 py-1.5 rounded-full text-[10px] font-black transition-all whitespace-nowrap border ${shopCategory === cat ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-black/40 text-gray-500 border-gray-800 hover:border-gray-600'}`}
+                        >
+                            {cat === 'ALL' ? '전체' : cat === 'CONSUMABLE' ? '소모품' : cat === 'WEAPON' ? '무기' : '방어구'}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
+                    {filteredItems.map(item => (
+                        <div key={item.id} className="p-4 bg-black/40 border border-gray-800 rounded-lg flex justify-between items-center group hover:border-yellow-500/40 transition-all">
+                            <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                    <h4 className="font-bold text-white group-hover:text-yellow-400 transition-colors">{item.name}</h4>
+                                    <span className="text-[8px] font-black px-1.5 bg-gray-800 text-gray-400 rounded-sm">{item.type}</span>
+                                </div>
+                                <p className="text-[10px] text-gray-500">{item.description}</p>
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    if (player.gold >= item.price) {
+                                        updatePlayer({ gold: player.gold - item.price, inventory: [...player.inventory, {...item, uid: Math.random().toString(36), isEquipped: false}] });
+                                        addLog(`${item.name} 구매 완료.`, 'gain');
+                                    } else {
+                                        addLog("금이 부족하여 구매할 수 없습니다.", 'info');
+                                    }
+                                }}
+                                className="ml-4 px-5 py-2.5 bg-yellow-600 hover:bg-yellow-500 text-black font-black text-[11px] rounded shadow-md transition-all active:scale-95 whitespace-nowrap"
+                            >
+                                {item.price.toLocaleString()} G
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
     </div>
   );
 };

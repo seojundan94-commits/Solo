@@ -1,3 +1,4 @@
+
 import { Type } from "@google/genai";
 import React from 'react';
 
@@ -42,7 +43,10 @@ export interface Companion {
   description: string;
   type: 'HUNTER' | 'SHADOW';
   attackBonus: number;
+  hpBonus?: number; // Added: Shadow HP contribution
+  level?: number; // Added: Individual shadow level
   role?: string; // e.g., Tank, Mage, Assassin
+  extractionDate?: number;
 }
 
 export type ItemType = 'CONSUMABLE' | 'WEAPON' | 'ARMOR';
@@ -98,19 +102,6 @@ export interface LogEntry {
   type: 'system' | 'combat' | 'info' | 'danger' | 'gain' | 'story';
   timestamp: number;
 }
-
-// Gemini Service Response Types
-export const EnemySchema = {
-  type: Type.OBJECT,
-  properties: {
-    name: { type: Type.STRING, description: "The name of the monster (Korean)." },
-    hp: { type: Type.INTEGER, description: "Hit points of the monster." },
-    attack: { type: Type.INTEGER, description: "Attack power of the monster." },
-    description: { type: Type.STRING, description: "A short, menacing description of the monster." },
-    isBoss: { type: Type.BOOLEAN, description: "Whether this monster is the dungeon boss." }
-  },
-  required: ["name", "hp", "attack", "description", "isBoss"]
-};
 
 export interface GameContextType {
   player: Player;
