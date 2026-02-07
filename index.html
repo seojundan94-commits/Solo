@@ -58,19 +58,18 @@
         }
     </script>
 
-    <!-- React 18.2.0 Stable Setup - Unified versions to fix Error #31 -->
+    <!-- React 18.2.0 Setup -->
     <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react-dom": "https://esm.sh/react-dom@18.2.0",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "react/": "https://esm.sh/react@18.2.0/",
-        "react-dom/": "https://esm.sh/react-dom@18.2.0/",
-        "@google/genai": "https://esm.sh/@google/genai"
-      }
-    }
-    </script>
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "@google/genai": "https://esm.sh/@google/genai",
+    "react/": "https://esm.sh/react@^19.2.4/"
+  }
+}
+</script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <style>
@@ -87,12 +86,456 @@
             background-size: 30px 30px;
         }
 
-        .shadow-glow-S { filter: drop-shadow(0 0 8px rgba(250, 204, 21, 0.6)); }
-        .shadow-glow-A { filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.6)); }
+        .animate-typewriter {
+            display: inline-block;
+            overflow: hidden;
+            white-space: nowrap;
+            animation: typewriter 0.5s steps(40, end);
+        }
+        @keyframes typewriter {
+            from { width: 0; }
+            to { width: 100%; }
+        }
     </style>
 </head>
 <body class="system-grid">
     <div id="root"></div>
-    <script type="module" src="index.tsx"></script>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+        import ReactDOM from 'react-dom/client';
+
+        // --- Constants & Types ---
+        const PlayerClass = {
+            NONE: "무직",
+            NECROMANCER: "네크로맨서",
+            SHADOW_MONARCH: "그림자 군주"
+        };
+
+        const Rank = {
+            E: "E", D: "D", C: "C", B: "B", A: "A", S: "S"
+        };
+
+        // --- Items Generation ---
+        const generateItems = () => {
+            const items = [];
+            const potions = [
+                { prefix: '하급', heal: 100, price: 100 },
+                { prefix: '중급', heal: 500, price: 400 },
+                { prefix: '상급', heal: 1500, price: 1000 },
+                { prefix: '최상급', heal: 5000, price: 3000 },
+                { prefix: '기적의', heal: 99999, price: 10000 }
+            ];
+            potions.forEach(p => {
+                items.push({ id: `hp_${p.prefix}`, name: `${p.prefix} 생명력 물약`, type: 'CONSUMABLE', description: `HP를 ${p.heal}만큼 회복합니다.`, price: p.price, effectValue: p.heal });
+                items.push({ id: `mp_${p.prefix}`, name: `${p.prefix} 정신력 물약`, type: 'CONSUMABLE', description: `MP를 ${Math.floor(p.heal/2)}만큼 회복합니다.`, price: p.price, effectValue: Math.floor(p.heal/2) });
+            });
+
+            const elixirs = ['근력', '민첩', '감각', '체력', '지능'];
+            elixirs.forEach(e => {
+                items.push({ id: `elixir_${e}`, name: `${e}의 영약`, type: 'CONSUMABLE', description: `${e} 스탯을 영구히 1 증가시킵니다.`, price: 5000, effectValue: 1 });
+            });
+
+            const weaponTypes = [
+                { name: '단검', slot: 'WEAPON', bonus: 1.0 },
+                { name: '장검', slot: 'WEAPON', bonus: 1.5 },
+                { name: '대검', slot: 'WEAPON', bonus: 2.0 },
+                { name: '낫', slot: 'WEAPON', bonus: 2.5 }
+            ];
+            const weaponRanks = [
+                { r: '낡은', multi: 0.5, price: 500 },
+                { r: '강철', multi: 1.2, price: 2000 },
+                { r: '명장의', multi: 2.5, price: 8000 },
+                { r: '전설의', multi: 6.0, price: 30000 },
+                { r: '신화의', multi: 15.0, price: 100000 },
+                { r: '군주의', multi: 40.0, price: 500000 }
+            ];
+            weaponTypes.forEach(w => {
+                weaponRanks.forEach(r => {
+                    items.push({ id: `wpn_${w.name}_${r.r}`, name: `${r.r} ${w.name}`, type: 'WEAPON', slot: w.slot, description: `${r.r} 등급의 ${w.name}입니다.`, price: r.price, effectValue: Math.floor(20 * w.bonus * r.multi) });
+                });
+            });
+
+            const armorSlots = [
+                { name: '투구', slot: 'HEAD' },
+                { name: '갑옷', slot: 'BODY' },
+                { name: '망토', slot: 'ACCESSORY' },
+                { name: '반지', slot: 'ACCESSORY' }
+            ];
+            armorSlots.forEach(a => {
+                weaponRanks.forEach(r => {
+                    items.push({ id: `arm_${a.name}_${r.r}`, name: `${r.r} ${a.name}`, type: 'ARMOR', slot: a.slot, description: `${r.r} 등급의 ${a.name}입니다.`, price: r.price, effectValue: Math.floor(10 * r.multi) });
+                });
+            });
+
+            items.push({ id: 'kasaka_fang', name: '카사카의 독니', type: 'WEAPON', slot: 'WEAPON', description: '마비와 출혈 효과가 깃든 단검입니다.', price: 15000, effectValue: 120 });
+            items.push({ id: 'demon_king_dagger', name: '악마왕의 단검', type: 'WEAPON', slot: 'WEAPON', description: '악마왕 바란의 무기입니다.', price: 80000, effectValue: 450 });
+            items.push({ id: 'orb_of_avarice', name: '탐욕의 구슬', type: 'ARMOR', slot: 'ACCESSORY', description: '마법 공격력을 증폭시킵니다.', price: 120000, effectValue: 800 });
+
+            return items;
+        };
+
+        const SHOP_ITEMS = generateItems();
+
+        const ENEMIES_POOL = {
+            [Rank.E]: [{ name: "굶주린 고블린", rank: Rank.E, hp: 60, maxHp: 60, attack: 10 }, { name: "동굴 거미", rank: Rank.E, hp: 80, maxHp: 80, attack: 12 }, { name: "슬라임", rank: Rank.E, hp: 50, maxHp: 50, attack: 8 }],
+            [Rank.D]: [{ name: "홉 고블린", rank: Rank.D, hp: 200, maxHp: 200, attack: 25 }, { name: "회색 늑대", rank: Rank.D, hp: 180, maxHp: 180, attack: 30 }, { name: "좀비 전사", rank: Rank.D, hp: 250, maxHp: 250, attack: 20 }],
+            [Rank.C]: [{ name: "리자드맨 정찰병", rank: Rank.C, hp: 500, maxHp: 500, attack: 55 }, { name: "검은 호랑이", rank: Rank.C, hp: 600, maxHp: 600, attack: 65 }, { name: "스켈레톤 나이트", rank: Rank.C, hp: 700, maxHp: 700, attack: 60 }],
+            [Rank.B]: [{ name: "철의 골렘", rank: Rank.B, hp: 1500, maxHp: 1500, attack: 100 }, { name: "와이번", rank: Rank.B, hp: 1200, maxHp: 1200, attack: 120 }, { name: "아이스 엘프", rank: Rank.B, hp: 1300, maxHp: 1300, attack: 110 }],
+            [Rank.A]: [{ name: "하이 오크 전사", rank: Rank.A, hp: 3500, maxHp: 3500, attack: 200 }, { name: "블러드 뱀파이어", rank: Rank.A, hp: 3000, maxHp: 3000, attack: 250 }, { name: "나태의 지옥견", rank: Rank.A, hp: 4000, maxHp: 4000, attack: 220 }],
+            [Rank.S]: [{ name: "고대 용의 후예", rank: Rank.S, hp: 12000, maxHp: 12000, attack: 600 }, { name: "카르갈간", rank: Rank.S, hp: 20000, maxHp: 20000, attack: 800, isBoss: true }, { name: "베르", rank: Rank.S, hp: 25000, maxHp: 25000, attack: 950, isBoss: true }]
+        };
+
+        const getRankColor = (rank) => {
+            switch (rank) {
+                case Rank.S: return 'text-yellow-400';
+                case Rank.A: return 'text-red-500';
+                case Rank.B: return 'text-purple-500';
+                case Rank.C: return 'text-blue-500';
+                case Rank.D: return 'text-green-500';
+                default: return 'text-gray-400';
+            }
+        };
+
+        // --- Sub-Components ---
+        const GameLog = ({ logs }) => {
+            const bottomRef = useRef(null);
+            useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
+            return (
+                <div className="flex-1 bg-system-panel/50 border border-system-blue/30 p-4 overflow-y-auto min-h-[200px] max-h-[300px] lg:max-h-[400px] rounded-lg backdrop-blur-sm custom-scrollbar">
+                    <div className="flex flex-col space-y-2">
+                        {logs.length === 0 && <div className="text-gray-500 text-sm italic text-center my-10">시스템 대기 중...</div>}
+                        {logs.map((log) => (
+                            <div key={log.id} className={`text-sm font-mono animate-typewriter overflow-hidden whitespace-normal break-words ${log.type === 'system' ? 'text-system-blue font-bold' : log.type === 'danger' ? 'text-red-500 font-bold' : log.type === 'gain' ? 'text-green-400' : log.type === 'combat' ? 'text-gray-300' : 'text-gray-400'}`}>
+                                <span className="opacity-50 text-xs mr-2">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                                {log.type === 'system' && '【SYSTEM】 '}{log.text}
+                            </div>
+                        ))}
+                        <div ref={bottomRef} />
+                    </div>
+                </div>
+            );
+        };
+
+        const StatusWindow = ({ player, onIncreaseStat, onToggleEquip, onUseItem, onOpenCodeModal }) => {
+            const [activeTab, setActiveTab] = useState('STATUS');
+            const weaponBonus = player.inventory.filter(i => i.isEquipped && i.type === 'WEAPON').reduce((sum, i) => sum + (i.effectValue || 0), 0);
+            const armorBonus = player.inventory.filter(i => i.isEquipped && i.type === 'ARMOR').reduce((sum, i) => sum + (i.effectValue || 0), 0);
+            const getEquippedItem = (slot) => player.inventory.find(i => i.isEquipped && i.slot === slot);
+
+            return (
+                <div className="w-full lg:w-80 shrink-0 bg-system-panel/80 border border-system-blue/40 p-5 rounded-lg text-system-text font-sans relative flex flex-col gap-6 shadow-xl backdrop-blur-md min-h-[500px]">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-system-blue to-transparent opacity-50"></div>
+                    <div className="flex justify-between items-center border-b border-system-blue/30 pb-3">
+                        <h2 className="text-xl font-black text-system-blue tracking-widest italic">STATUS</h2>
+                        <div className="text-[10px] text-system-blue/60 font-mono">{player.rank}-RANK</div>
+                    </div>
+                    <div className="flex gap-4">
+                        <div className="flex-1">
+                            <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">PLAYER</p>
+                            <p className="text-lg font-bold truncate text-white">{player.name || '알 수 없음'}</p>
+                            <p className="text-[10px] text-system-blue font-bold italic">{player.title}</p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">LEVEL</p>
+                            <p className="text-2xl font-black text-yellow-400 italic">Lv.{player.level}</p>
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <div className="flex justify-between text-[10px] mb-1 font-bold"><span className="text-red-400">HP</span><span className="font-mono">{player.hp.toLocaleString()} / {player.maxHp.toLocaleString()}</span></div>
+                            <div className="h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-800"><div className="h-full bg-gradient-to-r from-red-900 to-red-500 transition-all duration-500" style={{ width: `${(player.hp / player.maxHp) * 100}%` }} /></div>
+                        </div>
+                        <div>
+                            <div className="flex justify-between text-[10px] mb-1 font-bold"><span className="text-blue-400">MP</span><span className="font-mono">{player.mp.toLocaleString()} / {player.maxMp.toLocaleString()}</span></div>
+                            <div className="h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-800"><div className="h-full bg-gradient-to-r from-blue-900 to-blue-500 transition-all duration-500" style={{ width: `${(player.mp / player.maxMp) * 100}%` }} /></div>
+                        </div>
+                    </div>
+                    <div className="flex border-b border-gray-800 shrink-0">
+                        {['STATUS', 'INVENTORY', 'ARMY'].map(tab => (
+                            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-2 text-[10px] font-black transition-all ${activeTab === tab ? 'text-system-blue border-b-2 border-system-blue' : 'text-gray-500'}`}>{tab === 'STATUS' ? '상태' : tab === 'INVENTORY' ? '아이템' : '군단'}</button>
+                        ))}
+                    </div>
+                    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar pr-1">
+                        {activeTab === 'STATUS' && (
+                            <div className="space-y-2">
+                                {['strength', 'agility', 'sense', 'vitality', 'intelligence'].map((stat) => (
+                                    <div key={stat} className="flex items-center justify-between py-2 px-3 hover:bg-white/5 rounded-lg transition-colors group">
+                                        <span className="text-[11px] text-gray-500 uppercase font-bold group-hover:text-system-blue">{stat === 'strength' ? '근력' : stat === 'agility' ? '민첩' : stat === 'sense' ? '감각' : stat === 'vitality' ? '체력' : '지능'}</span>
+                                        <div className="flex items-center gap-4">
+                                            <span className="font-mono text-system-blue font-black">{player.stats[stat]}</span>
+                                            {player.statPoints > 0 && <button onClick={() => onIncreaseStat(stat)} className="w-5 h-5 bg-system-blue/20 text-system-blue hover:bg-system-blue hover:text-black rounded-full flex items-center justify-center font-black text-xs transition-all">+</button>}
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="pt-2 border-t border-gray-800 mt-2 space-y-1">
+                                    <div className="flex justify-between text-[10px]"><span className="text-gray-500">추가 공격력 (무기)</span><span className="text-red-400">+{weaponBonus}</span></div>
+                                    <div className="flex justify-between text-[10px]"><span className="text-gray-500">추가 방어력 (방어구)</span><span className="text-blue-400">+{armorBonus}</span></div>
+                                </div>
+                                <div className="mt-6 pt-4 border-t border-gray-800">
+                                    <p className="text-[10px] text-gray-500 mb-4 font-black tracking-widest uppercase">Equipment Slots</p>
+                                    <div className="grid grid-cols-4 gap-3">
+                                        {['WEAPON', 'HEAD', 'BODY', 'ACCESSORY'].map(slot => {
+                                            const item = getEquippedItem(slot);
+                                            return (
+                                                <div key={slot} className={`aspect-square bg-black/60 border border-gray-800 rounded-lg flex flex-col items-center justify-center transition-all relative overflow-hidden group ${item ? 'border-system-blue/40' : ''}`}>
+                                                    <span className={`text-[10px] font-bold ${item ? 'text-system-blue' : 'text-gray-700'}`}>{item ? (slot === 'WEAPON' ? '⚔️' : slot === 'HEAD' ? '🪖' : slot === 'BODY' ? '🛡️' : '💍') : slot[0]}</span>
+                                                    {item && <button onClick={() => onToggleEquip(item.uid)} className="absolute inset-0 bg-black/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[8px] font-black text-red-500">해제</button>}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {activeTab === 'INVENTORY' && (
+                            <div className="space-y-2">
+                                {player.inventory.length === 0 ? <div className="py-10 text-center opacity-20"><p className="text-[10px] font-black">비어 있음</p></div> : 
+                                    player.inventory.map(item => (
+                                        <div key={item.uid} className={`p-3 rounded-lg border flex justify-between items-center transition-all ${item.isEquipped ? 'bg-system-blue/10 border-system-blue/30' : 'bg-black/40 border-gray-800'}`}>
+                                            <div className="flex-1 min-w-0 pr-2">
+                                                <div className="flex items-center gap-2"><span className="text-xs font-bold text-white truncate">{item.name}</span>{item.isEquipped && <span className="text-[8px] bg-system-blue text-black px-1 rounded font-black shrink-0">장착</span>}</div>
+                                                <p className="text-[9px] text-gray-500 mt-0.5 truncate italic">{item.description}</p>
+                                            </div>
+                                            <div className="shrink-0">
+                                                {item.type === 'CONSUMABLE' ? <button onClick={() => onUseItem(item.uid)} className="px-2 py-1 bg-green-900 text-green-400 text-[9px] font-black rounded hover:bg-green-800 transition-colors">사용</button> : 
+                                                    <button onClick={() => onToggleEquip(item.uid)} className={`px-2 py-1 text-[9px] font-black rounded transition-colors ${item.isEquipped ? 'bg-red-900 text-red-400 hover:bg-red-800' : 'bg-system-blue/20 text-system-blue hover:bg-system-blue/40'}`}>{item.isEquipped ? '해제' : '장착'}</button>}
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+                        {activeTab === 'ARMY' && (
+                            <div className="space-y-2">
+                                {player.companions.length === 0 ? <div className="flex flex-col items-center justify-center opacity-10 py-20"><span className="text-5xl mb-4">💀</span><span className="text-[11px] font-black tracking-widest uppercase">No Army</span></div> : 
+                                    player.companions.map(comp => (
+                                        <div key={comp.id} className="w-full p-4 rounded-lg border bg-purple-900/10 border-purple-500/30 text-left">
+                                            <div className="flex justify-between items-center mb-1"><span className="text-sm font-black text-white">{comp.name}</span><span className={`text-[9px] font-black ${getRankColor(comp.rank)}`}>{comp.rank}</span></div>
+                                            <div className="flex justify-between items-center"><span className="text-[10px] text-gray-500 font-bold italic">{comp.role || '병사'}</span><span className="text-[9px] text-red-400 font-black">+{comp.attackBonus} ATK</span></div>
+                                        </div>
+                                    ))}
+                            </div>
+                        )}
+                    </div>
+                    <button onClick={onOpenCodeModal} className="mt-auto pt-4 w-full text-[9px] font-black text-system-blue/40 hover:text-system-blue transition-colors text-center uppercase tracking-widest">System Admin Access</button>
+                </div>
+            );
+        };
+
+        const ActionPanel = ({ player, addLog, updatePlayer, onEnemyDefeated, onPlayerDamage }) => {
+            const [gameState, setGameState] = useState('IDLE');
+            const [currentEnemy, setCurrentEnemy] = useState(null);
+            const [animState, setAnimState] = useState('NORMAL');
+            const [isExtracting, setIsExtracting] = useState(false);
+            const [shopCategory, setShopCategory] = useState('ALL');
+            const [currentWave, setCurrentWave] = useState(1);
+            const [maxWaves, setMaxWaves] = useState(5);
+            const [currentGateRank, setCurrentGateRank] = useState(Rank.E);
+
+            const filteredItems = useMemo(() => shopCategory === 'ALL' ? SHOP_ITEMS : SHOP_ITEMS.filter(item => item.type === shopCategory), [shopCategory]);
+
+            const spawnEnemy = (rank, wave) => {
+                const templates = ENEMIES_POOL[rank];
+                const template = templates[Math.floor(Math.random() * templates.length)];
+                const powerScale = 1 + (wave - 1) * 0.15;
+                const isBossWave = wave === maxWaves;
+                setCurrentEnemy({ ...template, hp: Math.floor(template.hp * powerScale), maxHp: Math.floor(template.maxHp * powerScale), attack: Math.floor(template.attack * powerScale), name: isBossWave ? `[BOSS] ${template.name}` : `${template.name} (W.${wave})`, isBoss: isBossWave || template.isBoss });
+                addLog(`웨이브 ${wave}: ${template.name}(이)가 출현했습니다.`, 'combat');
+            };
+
+            const handleAttack = () => {
+                if (!currentEnemy) return;
+                const critChance = Math.min(0.5, player.stats.sense * 0.01);
+                const isCrit = Math.random() < critChance;
+                const baseDmg = (player.stats.strength * 6) + (player.stats.agility * 3);
+                const weaponBonus = player.inventory.filter(i => i.isEquipped && i.type === 'WEAPON').reduce((sum, i) => sum + (i.effectValue || 0), 0);
+                let totalDmg = Math.floor((baseDmg + weaponBonus) * (0.8 + Math.random() * 0.4));
+                if (isCrit) totalDmg = Math.floor(totalDmg * 2.5);
+                const newHp = Math.max(0, currentEnemy.hp - totalDmg);
+                setCurrentEnemy(prev => ({ ...prev, hp: newHp }));
+                addLog(`${currentEnemy.name}에게 ${totalDmg} 피해! ${isCrit ? '(치명타!)' : ''}`, isCrit ? 'danger' : 'combat');
+                if (newHp <= 0) {
+                    if (currentWave < maxWaves) {
+                        const nextWave = currentWave + 1;
+                        setCurrentWave(nextWave);
+                        setTimeout(() => spawnEnemy(currentGateRank, nextWave), 600);
+                        updatePlayer({ hp: Math.min(player.maxHp, player.hp + Math.floor(player.maxHp * 0.1)) });
+                    } else {
+                        onEnemyDefeated(currentGateRank, Math.floor(currentEnemy.maxHp * 1.2), Math.floor(currentEnemy.maxHp * 4));
+                        setGameState('VICTORY');
+                        addLog(`게이트 클리어 성공.`, 'system');
+                    }
+                } else {
+                    setTimeout(() => {
+                        const armorBonus = player.inventory.filter(i => i.isEquipped && i.type === 'ARMOR').reduce((sum, i) => sum + (i.effectValue || 0), 0);
+                        const defense = (player.stats.vitality * 3) + armorBonus;
+                        onPlayerDamage(Math.max(5, currentEnemy.attack - defense));
+                        setAnimState('HIT');
+                        setTimeout(() => setAnimState('NORMAL'), 150);
+                    }, 400);
+                }
+            };
+
+            return (
+                <div className="flex-1 bg-system-panel/50 border border-system-blue/30 rounded-lg p-6 flex flex-col min-h-[450px]">
+                    {gameState === 'IDLE' && (
+                        <div className="flex-1 flex flex-col justify-center items-center gap-8">
+                            <h3 className="text-xl font-black text-system-blue tracking-widest uppercase italic">Gate Selection</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 w-full max-w-2xl">
+                                {Object.values(Rank).map(rank => (
+                                    <button key={rank} onClick={() => {
+                                        const waveCount = Math.floor(Math.random() * 6) + 5;
+                                        setCurrentGateRank(rank); setCurrentWave(1); setMaxWaves(waveCount);
+                                        spawnEnemy(rank, 1); setGameState('COMBAT');
+                                        addLog(`${rank}급 게이트 진입 (총 ${waveCount}웨이브)`, 'system');
+                                    }} className="group p-5 bg-black/60 border border-gray-800 rounded-lg hover:border-system-blue transition-all relative">
+                                        <span className={`text-3xl font-black italic block mb-1 ${getRankColor(rank)}`}>{rank}</span>
+                                        <span className="text-[9px] text-gray-500 font-bold tracking-widest uppercase">Entrance</span>
+                                    </button>
+                                ))}
+                            </div>
+                            <button onClick={() => setGameState('SHOP')} className="px-12 py-3 border border-yellow-500 text-yellow-500 font-bold text-xs tracking-widest hover:bg-yellow-500/20 rounded-full">상점 입장</button>
+                        </div>
+                    )}
+                    {gameState === 'COMBAT' && currentEnemy && (
+                        <div className={`flex-1 flex flex-col ${animState === 'HIT' ? 'animate-glitch' : ''}`}>
+                            <div className="flex justify-between items-center mb-6">
+                                <div><span className="text-[9px] font-black text-system-blue border border-system-blue/50 px-2 py-0.5 rounded uppercase">Wave {currentWave}/{maxWaves}</span><h2 className="text-2xl font-black text-white italic">{currentEnemy.name}</h2></div>
+                                <span className={`text-4xl font-black italic ${getRankColor(currentGateRank)}`}>{currentGateRank}</span>
+                            </div>
+                            <div className="w-full h-1 bg-gray-900 rounded-full mb-10 overflow-hidden"><div className="h-full bg-system-blue transition-all duration-500" style={{ width: `${(currentWave / maxWaves) * 100}%` }}></div></div>
+                            <div className="flex-1 flex flex-col justify-center items-center gap-12">
+                                <div className="w-full max-w-md">
+                                    <div className="flex justify-between text-[10px] mb-2 font-mono uppercase"><span className="text-red-500 font-bold">Enemy HP</span><span className="text-white">{currentEnemy.hp.toLocaleString()} / {currentEnemy.maxHp.toLocaleString()}</span></div>
+                                    <div className="h-5 bg-gray-900 border border-gray-800 rounded-lg overflow-hidden relative"><div className="h-full bg-gradient-to-r from-red-900 to-red-400 transition-all duration-300" style={{ width: `${(currentEnemy.hp / currentEnemy.maxHp) * 100}%` }}></div></div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 w-full max-w-sm">
+                                    <button onClick={handleAttack} className="py-5 bg-red-600 hover:bg-red-500 text-black font-black italic tracking-widest rounded transition-all">⚔️ 공격</button>
+                                    <button className="py-5 bg-gray-800 text-gray-500 font-black italic tracking-widest rounded cursor-not-allowed">⚡ 스킬 (잠김)</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {gameState === 'VICTORY' && (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center">
+                            <h2 className="text-4xl font-black text-white italic tracking-tighter mb-2 uppercase">Dungeon Clear</h2>
+                            {player.job !== PlayerClass.NONE && <button onClick={() => {
+                                setIsExtracting(true); updatePlayer({ mp: player.mp - 50 }); addLog(`"일어나라."`, 'system');
+                                setTimeout(() => {
+                                    if (Math.random() < (0.3 + (player.stats.intelligence * 0.015))) {
+                                        const newShadow = { id: Date.now().toString(), name: `그림자 병사`, rank: currentGateRank, attackBonus: Math.floor(currentEnemy.maxHp * 0.05), role: '기사' };
+                                        updatePlayer({ companions: [...player.companions, newShadow] });
+                                        addLog(`추출 성공.`, 'gain');
+                                    } else { addLog("추출 실패.", 'info'); }
+                                    setIsExtracting(false); setGameState('IDLE');
+                                }, 1500);
+                            }} disabled={isExtracting} className="py-4 px-12 bg-purple-900 border-2 border-purple-500 text-white font-black italic tracking-widest rounded my-8">{isExtracting ? '추출 중...' : '일어나라'}</button>}
+                            <button onClick={() => setGameState('IDLE')} className="py-3 text-[10px] text-gray-500 font-black hover:text-white underline tracking-widest uppercase">Exit Gate</button>
+                        </div>
+                    )}
+                    {gameState === 'SHOP' && (
+                        <div className="flex-1 flex flex-col overflow-hidden">
+                            <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-black text-yellow-500 italic tracking-widest uppercase">System Store</h2><button onClick={() => setGameState('IDLE')} className="text-[11px] font-bold text-gray-500 hover:text-white">BACK</button></div>
+                            <div className="flex gap-2 mb-4 overflow-x-auto pb-2 custom-scrollbar">
+                                {['ALL', 'CONSUMABLE', 'WEAPON', 'ARMOR'].map(cat => <button key={cat} onClick={() => setShopCategory(cat)} className={`px-4 py-1 rounded-full text-[10px] font-black border ${shopCategory === cat ? 'bg-yellow-500 text-black' : 'bg-black/40 text-gray-500 border-gray-800'}`}>{cat}</button>)}
+                            </div>
+                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
+                                {filteredItems.map(item => (
+                                    <div key={item.id} className="p-4 bg-black/40 border border-gray-800 rounded-lg flex justify-between items-center">
+                                        <div className="flex-1"><div><h4 className="font-bold text-white">{item.name}</h4></div><p className="text-[10px] text-gray-500">{item.description}</p></div>
+                                        <button onClick={() => { if (player.gold >= item.price) { updatePlayer({ gold: player.gold - item.price, inventory: [...player.inventory, {...item, uid: Math.random().toString(36), isEquipped: false}] }); addLog(`${item.name} 획득.`, 'gain'); } }} className="ml-4 px-5 py-2.5 bg-yellow-600 hover:bg-yellow-500 text-black font-black text-[11px] rounded whitespace-nowrap">{item.price.toLocaleString()} G</button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [gameStarted, setGameStarted] = useState(false);
+            const [playerNameInput, setPlayerNameInput] = useState("");
+            const [logs, setLogs] = useState([]);
+            const [isLevelUp, setIsLevelUp] = useState(false);
+            const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
+            const [codeInput, setCodeInput] = useState("");
+            const [player, setPlayer] = useState({
+                name: "", level: 1, currentExp: 0, maxExp: 100, hp: 200, maxHp: 200, mp: 100, maxMp: 100, gold: 2000,
+                stats: { strength: 10, agility: 10, sense: 10, vitality: 10, intelligence: 10 },
+                statPoints: 0, job: PlayerClass.NONE, title: "최약체 병기", rank: Rank.E, inventory: [], companions: []
+            });
+
+            const addLog = useCallback((text, type = 'info') => {
+                setLogs(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, text, type, timestamp: Date.now() }].slice(-50));
+            }, []);
+
+            useEffect(() => {
+                if (player.currentExp >= player.maxExp) {
+                    const leftoverExp = player.currentExp - player.maxExp;
+                    const newLevel = player.level + 1;
+                    setPlayer(prev => ({
+                        ...prev, level: newLevel, currentExp: leftoverExp, maxExp: Math.floor(prev.maxExp * 1.3),
+                        maxHp: prev.maxHp + 50, hp: prev.maxHp + 50, maxMp: prev.maxMp + 20, mp: prev.maxMp + 20, statPoints: prev.statPoints + 5
+                    }));
+                    setIsLevelUp(true);
+                    addLog(`【LEVEL UP】 레벨 ${newLevel} 달성.`, 'system');
+                    if (newLevel === 10 && player.job === PlayerClass.NONE) {
+                        setPlayer(p => ({ ...p, job: PlayerClass.NECROMANCER, title: "그림자 군주" }));
+                        addLog("【전직】 '그림자 군주'로 전직했습니다.", 'system');
+                    }
+                }
+            }, [player.currentExp]);
+
+            if (!gameStarted) {
+                return (
+                    <div className="min-h-screen w-full bg-system-dark flex items-center justify-center p-4">
+                        <div className="bg-system-panel border border-system-blue p-10 rounded shadow-2xl max-w-sm w-full text-center">
+                            <h1 className="text-4xl font-black text-system-blue mb-10 tracking-widest italic uppercase">System</h1>
+                            <input type="text" value={playerNameInput} onChange={(e) => setPlayerNameInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && playerNameInput.trim() && (setPlayer(p => ({...p, name: playerNameInput})), setGameStarted(true), addLog("시스템이 활성화되었습니다.", 'system'))} placeholder="이름을 입력하세요" className="w-full bg-black border border-gray-800 p-4 text-white mb-6 text-center" />
+                            <button onClick={() => playerNameInput.trim() && (setPlayer(p => ({...p, name: playerNameInput})), setGameStarted(true), addLog("시스템이 활성화되었습니다.", 'system'))} className="w-full bg-system-blue text-black font-black py-4 rounded uppercase tracking-widest">진입</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen w-full flex flex-col p-4 lg:p-8 relative">
+                    <header className="flex justify-between items-center mb-6 border-b border-system-blue/20 pb-4">
+                        <h1 className="text-2xl font-black text-white italic tracking-tighter">SOLO LEVELING <span className="text-system-blue uppercase">System</span></h1>
+                        <div className="text-yellow-500 font-mono font-bold text-sm bg-yellow-500/10 px-4 py-1 rounded">GOLD: {player.gold.toLocaleString()} G</div>
+                    </header>
+                    <main className="flex flex-col lg:flex-row gap-6 flex-1 max-w-7xl mx-auto w-full">
+                        <StatusWindow player={player} onIncreaseStat={(k) => setPlayer(p => ({ ...p, stats: {...p.stats, [k]: p.stats[k]+1}, statPoints: p.statPoints-1, maxHp: k==='vitality'?p.maxHp+20:p.maxHp, maxMp: k==='intelligence'?p.maxMp+10:p.maxMp}))} 
+                            onToggleEquip={(uid) => setPlayer(p => {
+                                const item = p.inventory.find(i => i.uid === uid);
+                                if (!item) return p;
+                                const isEq = !item.isEquipped;
+                                return { ...p, inventory: p.inventory.map(i => i.slot === item.slot ? (i.uid === uid ? {...i, isEquipped: isEq} : {...i, isEquipped: false}) : i)};
+                            })} 
+                            onUseItem={(uid) => setPlayer(p => {
+                                const item = p.inventory.find(i => i.uid === uid);
+                                if (!item) return p;
+                                let up = { inventory: p.inventory.filter(i => i.uid !== uid) };
+                                if (item.id.startsWith('hp_')) up.hp = Math.min(p.maxHp, p.hp + item.effectValue);
+                                if (item.id.startsWith('elixir_')) {
+                                    const sk = { 'elixir_근력':'strength', 'elixir_민첩':'agility', 'elixir_감각':'sense', 'elixir_체력':'vitality', 'elixir_지능':'intelligence' }[item.id];
+                                    if (sk) up.stats = {...p.stats, [sk]: p.stats[sk]+1};
+                                }
+                                addLog(`${item.name} 사용.`, 'gain');
+                                return {...p, ...up};
+                            })} 
+                            onOpenCodeModal={() => setIsCodeModalOpen(true)} />
+                        <div className="flex-1 flex flex-col gap-6"><GameLog logs={logs} /><ActionPanel player={player} addLog={addLog} updatePlayer={(upd) => setPlayer(p => ({...p, ...upd}))} onEnemyDefeated={(r, exp, g) => setPlayer(p => ({...p, currentExp: p.currentExp+exp, gold: p.gold+g}))} onPlayerDamage={(d) => setPlayer(p => ({...p, hp: Math.max(0, p.hp-d)}))} /></div>
+                    </main>
+                    {isLevelUp && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={() => setIsLevelUp(false)}><div className="bg-system-panel border-2 border-yellow-400 p-12 rounded text-center"><h2 className="text-5xl font-black text-yellow-400 mb-6 italic uppercase">Level Up!</h2><button className="px-16 py-4 bg-yellow-500 text-black font-black rounded uppercase">확인</button></div></div>}
+                    {isCodeModalOpen && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 p-4"><div className="bg-system-panel border border-system-blue p-8 rounded max-w-xs w-full"><input type="password" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && codeInput.trim().toLowerCase() === 'sungjinwoo' && (setPlayer(p => ({...p, level: 99, stats: {strength:999,agility:999,sense:999,vitality:999,intelligence:999}, maxHp:50000, hp:50000, gold:9999999, job:PlayerClass.SHADOW_MONARCH, title:"그림자 군주 성진우"})), addLog("ADMIN 모드 활성화.", 'system'), setIsCodeModalOpen(false))} className="w-full bg-black border border-gray-800 p-3 text-white mb-6 text-center" placeholder="ADMIN CODE" /><div className="flex gap-2"><button onClick={() => setIsCodeModalOpen(false)} className="flex-1 bg-gray-800 text-gray-400 font-bold py-3 rounded">닫기</button></div></div></div>}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
